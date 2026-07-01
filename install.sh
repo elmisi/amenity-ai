@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# amenity-stuff installer
-# Usage: curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/install.sh | sh
+# amenity-ai installer
+# Usage: curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/install.sh | sh
 #
 # Installs to:
 #   ~/.local/share/amenity-stuff/venv/  (isolated Python environment)
-#   ~/.local/bin/amenity-stuff          (launcher script)
+#   ~/.local/bin/amenity-ai          (launcher script)
 #
 set -e
 
-REPO_URL="git+https://github.com/elmisi/amenity-stuff.git"
-APP_NAME="amenity-stuff"
+REPO_URL="git+https://github.com/elmisi/amenity-ai.git"
+APP_NAME="amenity-ai"
 INSTALL_DIR="$HOME/.local/share/amenity-stuff"
 BIN_DIR="$HOME/.local/bin"
 MIN_PYTHON_VERSION="3.10"
@@ -176,7 +176,7 @@ mkdir -p "$BIN_DIR"
 
 cat > "$BIN_DIR/$APP_NAME" << 'LAUNCHER'
 #!/usr/bin/env bash
-exec "$HOME/.local/share/amenity-stuff/venv/bin/amenity-stuff" "$@"
+exec "$HOME/.local/share/amenity-stuff/venv/bin/amenity-ai" "$@"
 LAUNCHER
 
 chmod +x "$BIN_DIR/$APP_NAME"
@@ -293,4 +293,4 @@ printf "\n"
 printf "Press F2 in the TUI to configure settings.\n"
 printf "\n"
 printf "To uninstall:\n"
-printf "  ${BOLD}curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/uninstall.sh | sh${NC}\n"
+printf "  ${BOLD}curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/uninstall.sh | sh${NC}\n"

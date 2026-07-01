@@ -1,6 +1,6 @@
 # Adding Support for New File Types
 
-This guide explains how to add support for new file types in amenity-stuff.
+This guide explains how to add support for new file types in amenity-ai.
 
 ## Architecture Overview
 

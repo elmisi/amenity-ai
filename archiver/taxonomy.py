@@ -65,7 +65,7 @@ DEFAULT_TAXONOMY_LINES: tuple[str, ...] = DEFAULT_TAXONOMY_EN
 
 
 def _get_user_config_dir() -> Path:
-    """Get the user config directory for amenity-stuff."""
+    """Get the user config directory for amenity-ai."""
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path.home() / ".config"
     return base / "amenity-stuff"

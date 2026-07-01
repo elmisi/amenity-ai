@@ -1,4 +1,4 @@
-# Tassonomia Italiana per amenity-stuff
+# Tassonomia Italiana per amenity-ai
 # Formato: nome | descrizione | esempio1; esempio2; ...
 # Le righe che iniziano con # sono commenti
 # La categoria "sconosciuto" e' obbligatoria (aggiunta automaticamente se mancante)

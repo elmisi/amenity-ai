@@ -104,7 +104,7 @@ def print_performance_report(*, source_root: Path) -> None:
     def fmt(x: float | None) -> str:
         return "-" if x is None else f"{x:.1f}s"
 
-    print("amenity-stuff performance report")
+    print("amenity-ai performance report")
     print(f"Source: {source_root.expanduser().resolve()}")
     print(f"Cache:  {cache_path}")
     print("")

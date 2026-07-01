@@ -12,10 +12,10 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def app_title(*, provider_line: str = "") -> str:
     try:
-        ver = metadata.version("amenity-stuff")
+        ver = metadata.version("amenity-ai")
     except Exception:
         ver = "dev"
-    base = f"amenity-stuff v{ver}"
+    base = f"amenity-ai v{ver}"
     if provider_line:
         return f"{base} • {provider_line}"
     return base

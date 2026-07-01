@@ -1,4 +1,4 @@
-# Agent Guidelines (amenity-stuff)
+# Agent Guidelines (amenity-ai)
 
 This repo is a Textual (Python) TUI that scans a source folder, extracts content (PDF / images / office / text-ish), calls a local LLM (Ollama) for structured analysis + classification, and can move files into an archive.
 
@@ -70,7 +70,7 @@ When refactoring, do not change functionality unless explicitly requested:
   ```bash
   ~/.local/share/amenity-stuff/venv/bin/pip install -e .
   ```
-- This updates the system-wide `amenity-stuff` command to use your local changes.
+- This updates the system-wide `amenity-ai` command to use your local changes.
 - For quick tests without installing, run directly: `python3 -m archiver`
 
 ## SOLID Principles

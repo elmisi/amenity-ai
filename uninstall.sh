@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# amenity-stuff uninstaller
-# Usage: curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/uninstall.sh | sh
+# amenity-ai uninstaller
+# Usage: curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/uninstall.sh | sh
 #
 set -e
 
-APP_NAME="amenity-stuff"
+APP_NAME="amenity-ai"
 INSTALL_DIR="$HOME/.local/share/amenity-stuff"
 BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/amenity-stuff"

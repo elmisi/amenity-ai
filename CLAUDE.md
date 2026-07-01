@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**amenity-stuff** is a Python TUI (Textual framework) that organizes files using local LLM analysis via Ollama. It follows a 2-phase workflow:
+**amenity-ai** is a Python TUI (Textual framework) that organizes files using local LLM analysis via Ollama. It follows a 2-phase workflow:
 1. **Scan**: Extract content from files (PDF, images, Office docs, text, CSV, HTML, GPX, YAML) + optional OCR, then call LLM to produce structured facts
 2. **Classify**: Use facts + user-defined taxonomy to propose category, reference year, and filename
 
@@ -16,10 +16,10 @@ See `EXTRACTORS.md` for supported formats and how to add new ones.
 
 ```bash
 # One-line install (for users)
-curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/install.sh | sh
 
 # Uninstall
-curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/uninstall.sh | sh
+curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/uninstall.sh | sh
 
 # Development: refresh local install after version bump
 ~/.local/share/amenity-stuff/venv/bin/pip install -e .
@@ -28,13 +28,13 @@ curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/uninstall.
 python3 -m archiver
 
 # Run the TUI
-amenity-stuff --source /path/to/folder --archive /path/to/archive
+amenity-ai --source /path/to/folder --archive /path/to/archive
 
 # Run from source directly
 python3 -m archiver
 
 # Generate performance report from cache
-amenity-stuff report --source /path/to/folder
+amenity-ai report --source /path/to/folder
 
 # Bump version before committing code changes
 python3 scripts/bump_version.py
@@ -45,18 +45,24 @@ python3 scripts/bump_version.py
 ## Architecture
 
 ### Module Organization
-- **archiver/app.py**: Main Textual TUI application (~42KB)
-- **archiver/analyzer.py**: LLM facts/classification logic (~42KB)
+- **archiver/app.py**: Main Textual TUI application
+- **archiver/analyzer.py**: LLM facts/classification logic (analysis pipeline)
 - **archiver/extractors/**: File format handlers (PDF, Office, images, text formats)
-  - `registry.py` dispatches to format-specific extractors
+  - `registry.py` dispatches based on file kind
+  - `filetypes.py` maps extensions to kinds
   - See `EXTRACTORS.md` for adding new formats
 - **archiver/taxonomies/**: Default taxonomy files (en.txt, it.txt)
   - Users can override in `~/.config/amenity-stuff/taxonomies/`
+- **archiver/prompts.py**: All LLM prompt templates (facts, classification)
+- **archiver/llm_backend.py**: LLM interface abstraction (`LLMBackend` protocol)
+- **archiver/ollama_client.py**: Ollama HTTP API wrapper
+- **archiver/normalizer.py**: Normalization of LLM responses
+- **archiver/utils_parsing.py**: Text/date/amount parsing utilities
+- **archiver/utils_filename.py**: Filename manipulation helpers
 - **archiver/ui_*.py**: UI rendering and formatting helpers (separated from logic)
 - **archiver/*_screen.py**: Textual screen widgets (settings, help, confirm, etc.)
 - **archiver/scanner.py**: File discovery and `ScanItem` dataclass
 - **archiver/cache.py**: Persistent result caching keyed by `(path, size, mtime)`
-- **archiver/ollama_client.py**: Ollama HTTP API wrapper
 - **archiver/config.py**: User configuration (~/.config/amenity-stuff/config.json)
 
 ### Key Patterns
@@ -84,3 +90,9 @@ See **AGENTS.md** for detailed conventions. Key points:
 - Do NOT bump version for: docs, shell scripts, config files
 - Commit messages: `type: description` (e.g., `fix: skip facts when summary_long missing`)
 - Use `pathlib.Path` for filesystem paths; add type hints on public functions
+
+### SOLID Principles in Practice
+- **New extractors**: Add module in `extractors/`, register in `registry.py` (no changes to existing code)
+- **New LLM backends**: Implement `LLMBackend` protocol from `llm_backend.py`
+- **Prompts**: Externalized in `prompts.py` for easy customization
+- High-level modules depend on abstractions; configuration is injected via dataclasses

@@ -1,6 +1,6 @@
-# Project Specification (amenity-stuff)
+# Project Specification (amenity-ai)
 
-`amenity-stuff` is a local-first Terminal UI to analyze and organize files using a local LLM (via Ollama).
+`amenity-ai` is a local-first Terminal UI to analyze and organize files using a local LLM (via Ollama).
 
 The long-term goal is to help users turn a “messy folder” into a clean archive structure with meaningful names, using an interactive review/approval workflow.
 

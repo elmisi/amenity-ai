@@ -1,4 +1,4 @@
-# amenity-stuff
+# amenity-ai
 
 Terminal UI to organize files using a local LLM (via Ollama) with a 2-phase workflow:
 1) extract high-signal facts (no classification yet),
@@ -12,12 +12,12 @@ See `PROJECT_SPEC.md` for a more detailed (and up-to-date) project specification
 
 One-line install (recommended):
 ```bash
-curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/install.sh | sh
 ```
 
 Uninstall:
 ```bash
-curl -sSL https://raw.githubusercontent.com/elmisi/amenity-stuff/main/uninstall.sh | sh
+curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/uninstall.sh | sh
 ```
 
 ### Alternative: manual install
@@ -26,20 +26,20 @@ From source (development):
 ```bash
 python3 -m venv .venv
 ./.venv/bin/pip install .
-amenity-stuff
+amenity-ai
 ```
 
 System-wide via pipx:
 ```bash
-pipx install git+https://github.com/elmisi/amenity-stuff.git
-amenity-stuff
+pipx install git+https://github.com/elmisi/amenity-ai.git
+amenity-ai
 ```
 
 ## Run
 
 Pass source/archive on the CLI (defaults: `--source .` and `--archive ./ARCHIVE`):
 ```bash
-amenity-stuff --source /path/to/folder --archive /path/to/archive
+amenity-ai --source /path/to/folder --archive /path/to/archive
 ```
 
 ## Performance report
@@ -47,7 +47,7 @@ amenity-stuff --source /path/to/folder --archive /path/to/archive
 After running Scan/Classify on a folder, you can print a short timing summary from the cache:
 
 ```bash
-amenity-stuff report --source /path/to/folder
+amenity-ai report --source /path/to/folder
 ```
 
 ## Settings
@@ -95,13 +95,13 @@ The "Vision fallback" setting allows configuring a secondary vision model when t
 ## Optional System Dependencies
 
 ### OCR for scanned PDFs and images (recommended)
-If a PDF has no extractable text (i.e. it's effectively an image), or if you scan documents as images, amenity-stuff can use Tesseract OCR.
+If a PDF has no extractable text (i.e. it's effectively an image), or if you scan documents as images, amenity-ai can use Tesseract OCR.
 
 - Ubuntu / Linux Mint:
   - `sudo apt-get install tesseract-ocr tesseract-ocr-ita`
 
 ### `.doc` / `.xls` extraction (optional)
-`amenity-stuff` can extract text from:
+`amenity-ai` can extract text from:
 - `.docx` and `.xlsx` without extra dependencies (best-effort)
 - `.doc` and `.xls` via LibreOffice (best-effort)
 

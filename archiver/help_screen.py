@@ -24,7 +24,7 @@ class HelpScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         try:
-            ver = metadata.version("amenity-stuff")
+            ver = metadata.version("amenity-ai")
         except Exception:
             ver = "dev"
 
@@ -34,7 +34,7 @@ class HelpScreen(ModalScreen[None]):
                 yield Static(
                     "\n".join(
                         [
-                            f"amenity-stuff v{ver}",
+                            f"amenity-ai v{ver}",
                             "Author: elmisi",
                             "",
                             "Terminal UI to organize files using a local LLM (via Ollama) with a 2-phase workflow:",

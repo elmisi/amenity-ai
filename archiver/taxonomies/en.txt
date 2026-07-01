@@ -1,4 +1,4 @@
-# English Taxonomy for amenity-stuff
+# English Taxonomy for amenity-ai
 # Format: name | description | example1; example2; ...
 # Lines starting with # are comments
 # The "unknown" category is required (added automatically if missing)

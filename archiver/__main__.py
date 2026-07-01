@@ -11,10 +11,10 @@ from .settings import Settings
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="amenity-stuff")
+    parser = argparse.ArgumentParser(prog="amenity-ai")
     sub = parser.add_subparsers(dest="command")
 
-    # Backward-compatible defaults: allow `amenity-stuff` (no subcommand) to run the TUI,
+    # Backward-compatible defaults: allow `amenity-ai` (no subcommand) to run the TUI,
     # and keep --source/--archive available at the top-level.
     parser.add_argument(
         "--source",
