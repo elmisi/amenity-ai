@@ -53,7 +53,7 @@ Mapping dei parametri della pipeline:
 |-------------------------------|--------------------------------------------------------------|
 | `prompt`                      | `messages: [{"role": "user", "content": prompt}]`            |
 | `think=False`                 | `reasoning_effort: "low"`                                    |
-| `options["num_predict"]`      | ignorato; `max_tokens: 1500` fisso (il reasoning consuma completion tokens; i cap Ollama 220–400 troncherebbero a metà ragionamento) |
+| `options["num_predict"]`      | ignorato; `max_tokens: 8000` fisso (il reasoning consuma completion tokens; i cap Ollama 220–400 troncherebbero a metà ragionamento. Il valore iniziale 1500 si è rivelato insufficiente in verifica e2e: il prompt di normalize ha prodotto `finish_reason: length`; inoltre `finish_reason == "length"` viene ora trattato come errore esplicito, così scattano i fallback esistenti) |
 | `options["temperature"]`      | pass-through (`temperature: 0` nella pipeline)               |
 | `response_format`             | non inviato (il server non lo applica; JSON garantito da prompt + estrazione/riparazione esistente nel normalizer) |
 | `keep_alive`                  | ignorato                                                     |
