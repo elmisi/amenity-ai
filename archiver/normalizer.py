@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from .ollama_client import generate
+from .llm_router import generate
 from .scanner import ScanItem
 from .taxonomy import Taxonomy, taxonomy_to_prompt_block
 from .utils_filename import (
@@ -280,6 +280,7 @@ def normalize_items(
     filename_separator: str,
     chunk_size: int = 25,
     should_cancel: Optional[Callable[[], bool]] = None,
+    ds4_base_url: str = "",
 ) -> NormalizationResult:
     allowed = taxonomy.allowed_names
     taxonomy_block = taxonomy_to_prompt_block(taxonomy)
@@ -312,6 +313,7 @@ def normalize_items(
                     filename_separator=filename_separator,
                     chunk_size=1,
                     should_cancel=should_cancel,
+                    ds4_base_url=ds4_base_url,
                 )
                 if single_result.error:
                     return NormalizationResult(by_path={**by_path, **fallback_by_path}, model_used=model, error=error_reason)
@@ -422,6 +424,7 @@ def normalize_items(
             model=model,
             prompt=prompt,
             base_url=base_url,
+            ds4_base_url=ds4_base_url,
             timeout_s=180.0,
             response_format=_NORMALIZE_RESPONSE_SCHEMA,
             think=False,
