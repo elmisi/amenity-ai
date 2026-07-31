@@ -16,6 +16,8 @@ def build_analysis_config(*, settings: "Settings", discovery: "DiscoveryResult |
     # Facts extraction is latency-sensitive: prefer a smaller model when available.
     if (not settings.facts_model) or settings.facts_model == "auto":
         prefer_fast = (
+            "ds4:deepseek-v4-flash",
+            "ds4:deepseek-v4-pro",
             "gemma3:1b",
             "qwen2.5:3b-instruct",
             "phi4-mini:latest",
@@ -53,4 +55,5 @@ def build_analysis_config(*, settings: "Settings", discovery: "DiscoveryResult |
         vision_models=vision_models,
         filename_separator=settings.filename_separator,
         ocr_mode=settings.ocr_mode,
+        ds4_base_url=settings.ds4_base_url,
     )

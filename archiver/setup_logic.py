@@ -21,6 +21,7 @@ def settings_from_setup(*, current: Settings, setup: SetupResult) -> Settings:
         filename_separator=current.filename_separator,
         ocr_mode=current.ocr_mode,
         undated_folder_name=current.undated_folder_name,
+        ds4_base_url=current.ds4_base_url,
         skip_initial_setup=current.skip_initial_setup,
     )
 
@@ -38,5 +39,6 @@ def app_config_from_settings(settings: Settings) -> AppConfig:
         filename_separator=settings.filename_separator,
         ocr_mode=settings.ocr_mode,
         undated_folder_name=settings.undated_folder_name,
+        ds4_base_url=settings.ds4_base_url,
     )
 
