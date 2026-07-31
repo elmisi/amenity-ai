@@ -6,7 +6,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, OptionList, Static, TextArea
+from textual.widgets import Footer, Header, Input, OptionList, Static, TextArea
 
 from .archive_picker_screen import ArchivePickerResult, ArchivePickerScreen
 from .taxonomy import (
@@ -28,6 +28,7 @@ class SettingsResult:
     ocr_mode: str
     undated_folder_name: str
     archive_root: Path
+    ds4_base_url: str
 
 
 class SettingsScreen(ModalScreen[SettingsResult]):
@@ -39,6 +40,8 @@ class SettingsScreen(ModalScreen[SettingsResult]):
     #taxonomy_label { height: auto; padding: 1 0 0 0; }
     #taxonomy { height: 1fr; border: round $accent; }
     #errors { height: auto; color: $error; }
+    #ds4_label { height: auto; padding: 1 0 0 0; }
+    #ds4_url { height: 3; }
     """
 
     BINDINGS = [
@@ -63,11 +66,13 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         ocr_mode: str,
         undated_folder_name: str,
         archive_root: Path,
+        ds4_base_url: str,
         available_models: tuple[str, ...],
         provider_info: str,
     ) -> None:
         super().__init__()
         self._provider_info = provider_info.strip()
+        self._ds4_base_url = (ds4_base_url or "").strip()
         self._output_language = output_language if output_language in {"auto", "it", "en"} else "auto"
         self._taxonomies: dict[str, tuple[str, ...]] = dict(taxonomies) if taxonomies else {}
         self._facts_model = facts_model or "auto"
@@ -115,6 +120,8 @@ class SettingsScreen(ModalScreen[SettingsResult]):
             id="intro",
         )
         yield Static(self._provider_info or "Provider: (unknown)", id="provider", markup=False)
+        yield Static("ds4 endpoint (OpenAI-compatible, empty = disabled):", id="ds4_label")
+        yield Input(value=self._ds4_base_url, placeholder="http://localhost:8000", id="ds4_url")
         yield OptionList(*self._render_options(), id="options")
         lang = self._get_effective_lang()
         yield Static(f"Taxonomy [{lang.upper()}] (one category per line): name | description | examples", id="taxonomy_label")
@@ -137,6 +144,12 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         self.query_one("#taxonomy", TextArea).text = "\n".join(default_lines).strip() + "\n"
         self.query_one("#errors", Static).update("")
 
+    def _current_ds4_url(self) -> str:
+        try:
+            return self.query_one("#ds4_url", Input).value.strip()
+        except Exception:
+            return self._ds4_base_url
+
     def action_cancel(self) -> None:
         self.dismiss(
             SettingsResult(
@@ -150,6 +163,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 ocr_mode=self._ocr_mode,
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
+                ds4_base_url=self._current_ds4_url(),
             )
         )
 
@@ -283,6 +297,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 ocr_mode=self._ocr_mode,
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
+                ds4_base_url=self._current_ds4_url(),
             )
         )
 
@@ -300,6 +315,8 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         out: list[str] = []
         for m in models:
             ml = m.lower()
+            if ml.startswith("ds4:"):
+                continue
             if any(v in ml for v in ("vision", "llava", "moondream", "minicpm", "bakllava")):
                 out.append(m)
         return out

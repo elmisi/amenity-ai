@@ -140,6 +140,8 @@ class ArchiverApp(App):
 
     def _ordered_classify_models(self, models: tuple[str, ...]) -> tuple[str, ...]:
         prefer = (
+            "ds4:deepseek-v4-flash",
+            "ds4:deepseek-v4-pro",
             "qwen2.5:3b-instruct",
             "qwen3:4b",
             "phi4-mini:latest",
@@ -320,11 +322,11 @@ class ArchiverApp(App):
         provider_info = "Provider: (not detected yet)"
         if self._discovery:
             provider_info = self._provider_line or "Provider: ollama (missing) • models: 0"
+            merged: list[str] = []
             for p in self._discovery.providers:
-                if p.name != "ollama":
-                    continue
-                available_models = p.models
-                break
+                if p.available and p.models:
+                    merged.extend(p.models)
+            available_models = tuple(merged)
             if available_models:
                 shown = ", ".join(available_models[:8])
                 if len(available_models) > 8:
@@ -342,6 +344,7 @@ class ArchiverApp(App):
                 ocr_mode=self.settings.ocr_mode,
                 undated_folder_name=self.settings.undated_folder_name,
                 archive_root=self.settings.archive_root,
+                ds4_base_url=self.settings.ds4_base_url,
                 available_models=available_models,
                 provider_info=provider_info,
             ),
@@ -353,6 +356,7 @@ class ArchiverApp(App):
         self.push_screen(HelpScreen(), wait_for_dismiss=False)
 
     def _on_settings_done(self, result: SettingsResult) -> None:
+        ds4_changed = result.ds4_base_url != self.settings.ds4_base_url
         self.settings = replace(
             self.settings,
             output_language=result.output_language,
@@ -365,10 +369,13 @@ class ArchiverApp(App):
             filename_separator=result.filename_separator,
             ocr_mode=result.ocr_mode,
             undated_folder_name=result.undated_folder_name,
+            ds4_base_url=result.ds4_base_url,
         )
         self.query_one("#arc", Static).update(f"Archive: {self.settings.archive_root}")
         self._save_app_config()
         self._render_notes()
+        if ds4_changed:
+            self.run_worker(self._run_discovery())
 
     async def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id != "files":
@@ -390,7 +397,7 @@ class ArchiverApp(App):
         notes_widget.update("Detecting local providers…")
 
         def do_discover() -> DiscoveryResult:
-            return discover_providers()
+            return discover_providers(ds4_base_url=self.settings.ds4_base_url)
 
         worker = self.run_worker(do_discover, thread=True)
         self._discovery = await worker.wait()
