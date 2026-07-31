@@ -72,6 +72,9 @@ class Ds4Backend(BaseLLMBackend):
         except Exception as exc:
             return LLMResponse(text="", error=f"{type(exc).__name__}: {exc}", done=False)
 
+        if not isinstance(data, dict):
+            return LLMResponse(text="", error="ds4: malformed response", done=False)
+
         err = data.get("error")
         if err:
             msg = err.get("message") if isinstance(err, dict) else str(err)

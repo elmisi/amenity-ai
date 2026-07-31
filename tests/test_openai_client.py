@@ -108,3 +108,10 @@ def test_generate_malformed_response_is_error(monkeypatch):
     monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: {"choices": []})
     resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
     assert not resp.success
+
+
+def test_generate_non_dict_json_body_is_error(monkeypatch):
+    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: [])
+    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
+    assert not resp.success
+    assert "malformed" in (resp.error or "")
