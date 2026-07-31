@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 
 from .llm_backend import BaseLLMBackend, LLMResponse
 
-_MAX_TOKENS = 1500
+_MAX_TOKENS = 8000
 
 
 def _post_json(url: str, payload: dict[str, Any], *, timeout_s: float) -> dict[str, Any]:
@@ -84,6 +84,13 @@ class Ds4Backend(BaseLLMBackend):
             content = data["choices"][0]["message"].get("content") or ""
         except (KeyError, IndexError, TypeError):
             return LLMResponse(text="", error="ds4: malformed response", done=False)
+        finish_reason = None
+        try:
+            finish_reason = data["choices"][0].get("finish_reason")
+        except (KeyError, IndexError, TypeError):
+            pass
+        if finish_reason == "length":
+            return LLMResponse(text="", error="ds4: output truncated by max_tokens", done=False)
         if not content.strip():
             return LLMResponse(text="", error="ds4: empty content", done=False)
         return LLMResponse(text=content, model=data.get("model") or model, done=True)

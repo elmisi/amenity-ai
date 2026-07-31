@@ -51,7 +51,7 @@ def test_generate_builds_openai_payload(monkeypatch):
     p = captured["payload"]
     assert p["model"] == "deepseek-v4-flash"
     assert p["messages"] == [{"role": "user", "content": "hello"}]
-    assert p["max_tokens"] == 1500          # num_predict ignored, fixed budget
+    assert p["max_tokens"] == 8000          # num_predict ignored, fixed budget
     assert p["reasoning_effort"] == "low"   # think=False mapping
     assert p["temperature"] == 0
     assert "response_format" not in p       # server ignores it; not sent
@@ -115,3 +115,24 @@ def test_generate_non_dict_json_body_is_error(monkeypatch):
     resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
     assert not resp.success
     assert "malformed" in (resp.error or "")
+
+
+def test_generate_max_tokens_budget(monkeypatch):
+    captured = {}
+
+    def fake_post(url, payload, *, timeout_s):
+        captured["payload"] = payload
+        return _ok_response()
+
+    monkeypatch.setattr(openai_client, "_post_json", fake_post)
+    Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
+    assert captured["payload"]["max_tokens"] == 8000
+
+
+def test_generate_length_finish_reason_is_error(monkeypatch):
+    resp_body = _ok_response('{"truncated": ')
+    resp_body["choices"][0]["finish_reason"] = "length"
+    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: resp_body)
+    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
+    assert not resp.success
+    assert "truncated" in (resp.error or "")
