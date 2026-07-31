@@ -56,6 +56,7 @@ You can change:
 - output language (`auto`, `it`, `en`)
 - taxonomy (allowed categories)
 - models (facts / classify / vision / vision fallback), archive folder, filename separator, OCR mode
+- ds4 endpoint (OpenAI-compatible server, optional)
 
 Press `F2` in the TUI to open Settings. Configuration is stored in `~/.config/amenity-stuff/config.json`.
 
@@ -120,6 +121,16 @@ On startup the app tries to detect:
 - `ollama` (if available in `PATH`)
 
 Models: the app uses a text model and (for images) a vision model; exact model names are configurable.
+
+### Additional OpenAI-compatible endpoint (ds4)
+
+Besides Ollama, you can point amenity-ai at any local OpenAI-compatible server
+(e.g. vLLM, llama.cpp server). Set the endpoint in Settings (`F2`) →
+"ds4 endpoint", e.g. `http://localhost:8000`. Leave it empty to disable.
+
+Models from that server appear with the `ds4:` prefix (e.g. `ds4:deepseek-v4-flash`)
+and are preferred for facts/classify when models are set to `auto`. They are
+text-only: images always use Ollama vision models.
 
 ## Scan (MVP)
 

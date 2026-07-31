@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.10.0
+
+- Add support for a second local LLM provider: any OpenAI-compatible
+  chat-completions server ("ds4"), configured via Settings → ds4 endpoint.
+  Models appear with the `ds4:` prefix, are preferred for facts/classify in
+  `auto` mode, and fall back to Ollama when the server is unavailable.
+  Text-only: vision stays on Ollama.
+
 ## [0.9.13] - 2026-07-01
 
 ### Changed

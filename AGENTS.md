@@ -16,6 +16,9 @@ These guidelines document the conventions used so far and should be followed for
   - Analysis / extraction / OCR / LLM prompt+parse live outside the UI layer.
 - Prefer “data in / data out” functions for logic that doesn’t need `App` context (easier to test and refactor).
 - Use dataclasses (or TypedDicts) for structured results and configuration to reduce “loose dict” usage.
+- LLM provider routing is by model-id prefix (`ds4:` → OpenAI-compatible backend via
+  `llm_router.py`; no prefix → Ollama). Keep the prefix attached to model ids everywhere
+  (settings, candidates, cache `model_used`, UI).
 
 ## Textual / TUI Conventions
 - Use workers/threads for long-running operations (scan, extraction, OCR, LLM).
