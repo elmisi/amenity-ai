@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
-from .ollama_client import generate
+from .llm_router import generate
 
 from .extractors.image import extract_image_smart, ImageExtractionResult
 from .extractors.registry import extract_with_meta
@@ -50,6 +50,7 @@ class AnalysisConfig:
     text_models: tuple[str, ...] = ()
     vision_models: tuple[str, ...] = ()
     ollama_base_url: str = "http://localhost:11434"
+    ds4_base_url: str = ""
     output_language: str = "auto"  # auto | it | en
     taxonomy: Taxonomy = _DEFAULT_TAXONOMY
     filename_separator: str = "space"  # space | underscore | dash
@@ -219,7 +220,7 @@ def _truncate_raw_output(text: str) -> str:
     return raw[: _MAX_LLM_RAW_OUTPUT_CHARS - 200] + "\n...[truncated]...\n" + raw[-200:]
 
 
-def _repair_json_dict_via_llm(*, model: str, raw_output: str, base_url: str) -> Optional[str]:
+def _repair_json_dict_via_llm(*, model: str, raw_output: str, base_url: str, ds4_base_url: str = "") -> Optional[str]:
     snippet = _truncate_raw_output(raw_output)
     prompt = build_json_repair_prompt(snippet=snippet)
     try:
@@ -227,6 +228,7 @@ def _repair_json_dict_via_llm(*, model: str, raw_output: str, base_url: str) -> 
             model=model,
             prompt=prompt,
             base_url=base_url,
+            ds4_base_url=ds4_base_url,
             timeout_s=60.0,
             response_format=_JSON_RESPONSE_FORMAT,
             think=False,
@@ -292,6 +294,7 @@ def _classify_from_text(
     filename: str,
     mtime_iso: str,
     base_url: str,
+    ds4_base_url: str = "",
     reference_year_hint: Optional[str],
     category_hint: Optional[str],
     output_language: str,
@@ -315,6 +318,7 @@ def _classify_from_text(
             model=model,
             prompt=prompt,
             base_url=base_url,
+            ds4_base_url=ds4_base_url,
             timeout_s=180.0,
             response_format=_JSON_RESPONSE_FORMAT,
             think=False,
@@ -322,15 +326,15 @@ def _classify_from_text(
             options=_CLASSIFY_GENERATE_OPTIONS,
         )
     except Exception as exc:  # noqa: BLE001 (MVP: best-effort)
-        return AnalysisResult(status="error", reason=f"Ollama errore: {type(exc).__name__}", model_used=model)
+        return AnalysisResult(status="error", reason=f"LLM errore: {type(exc).__name__}", model_used=model)
     if gen.error:
-        return AnalysisResult(status="error", reason=f"Ollama errore: {gen.error}", model_used=model)
+        return AnalysisResult(status="error", reason=f"LLM errore: {gen.error}", model_used=model)
     out = gen.response
     data = _extract_json(out)
     llm_raw_output: Optional[str] = None
     if not isinstance(data, dict):
         llm_raw_output = _truncate_raw_output(out)
-        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, base_url=base_url)
+        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, base_url=base_url, ds4_base_url=ds4_base_url)
         if repaired:
             data = _extract_json(repaired)
     if not isinstance(data, dict):
@@ -486,6 +490,7 @@ def _try_text_models(
             filename=filename,
             mtime_iso=mtime_iso,
             base_url=cfg.ollama_base_url,
+            ds4_base_url=cfg.ds4_base_url,
             reference_year_hint=reference_year_hint,
             category_hint=category_hint,
             output_language=cfg.output_language,
@@ -505,6 +510,7 @@ def _extract_facts_from_text(
     filename: str,
     mtime_iso: str,
     base_url: str,
+    ds4_base_url: str = "",
     year_hint_filename: Optional[str],
     year_hint_text: Optional[str],
     output_language: str,
@@ -522,6 +528,7 @@ def _extract_facts_from_text(
             model=model,
             prompt=prompt,
             base_url=base_url,
+            ds4_base_url=ds4_base_url,
             timeout_s=180.0,
             response_format=_JSON_RESPONSE_FORMAT,
             think=False,
@@ -529,16 +536,16 @@ def _extract_facts_from_text(
             options=_FACTS_GENERATE_OPTIONS,
         )
     except Exception as exc:  # noqa: BLE001
-        return FactsResult(status="error", reason=f"Ollama errore: {type(exc).__name__}", model_used=model)
+        return FactsResult(status="error", reason=f"LLM errore: {type(exc).__name__}", model_used=model)
     if gen.error:
-        return FactsResult(status="error", reason=f"Ollama errore: {gen.error}", model_used=model)
+        return FactsResult(status="error", reason=f"LLM errore: {gen.error}", model_used=model)
 
     out = gen.response
     data = _extract_json(out)
     llm_raw_output: Optional[str] = None
     if not isinstance(data, dict):
         llm_raw_output = _truncate_raw_output(out)
-        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, base_url=base_url)
+        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, base_url=base_url, ds4_base_url=ds4_base_url)
         if repaired:
             data = _extract_json(repaired)
     if not isinstance(data, dict):
@@ -634,6 +641,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
             filename=path.name,
             mtime_iso=item.mtime_iso,
             base_url=config.ollama_base_url,
+            ds4_base_url=config.ds4_base_url,
             year_hint_filename=year_hint_filename,
             year_hint_text=year_hint_text,
             output_language=config.output_language,
@@ -686,6 +694,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
             filename=path.name,
             mtime_iso=item.mtime_iso,
             base_url=config.ollama_base_url,
+            ds4_base_url=config.ds4_base_url,
             year_hint_filename=year_hint_filename,
             year_hint_text=year_hint_text,
             output_language=config.output_language,
