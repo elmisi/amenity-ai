@@ -68,3 +68,54 @@ def test_normalize_items_default_ds4_empty(monkeypatch):
         chunk_size=1,
     )
     assert captured["ds4_base_url"] == ""
+
+
+def test_normalize_items_with_fallback_tries_next_model_on_error(monkeypatch):
+    calls: list[str] = []
+
+    def fake_generate(**kwargs):
+        model = kwargs["model"]
+        calls.append(model)
+        if model == "ds4:deepseek-v4-flash":
+            return OllamaGenerateResult(response="", model=model, done=True, error="connection refused")
+        return OllamaGenerateResult(
+            response='[{"path": "doc_1", "category": "unknown", "reference_year": null, '
+                     '"proposed_name": "doc", "summary": "s", "confidence": 0.9}]',
+            model=model,
+            done=True,
+        )
+
+    monkeypatch.setattr(normalizer, "generate", fake_generate)
+    res = normalizer.normalize_items_with_fallback(
+        items=[_item()],
+        models=("ds4:deepseek-v4-flash", "gemma3:1b"),
+        base_url="http://localhost:11434",
+        taxonomy=_TAXONOMY,
+        output_language="en",
+        filename_separator="space",
+        chunk_size=1,
+    )
+    assert res.error is None
+    assert calls == ["ds4:deepseek-v4-flash", "gemma3:1b"]
+
+
+def test_normalize_items_with_fallback_stops_immediately_on_cancelled(monkeypatch):
+    calls: list[str] = []
+
+    def fake_normalize_items(*, model, **_kwargs):
+        calls.append(model)
+        return normalizer.NormalizationResult(by_path={}, model_used=model, error="Cancelled")
+
+    monkeypatch.setattr(normalizer, "normalize_items", fake_normalize_items)
+    res = normalizer.normalize_items_with_fallback(
+        items=[_item()],
+        models=("gemma3:1b", "ds4:deepseek-v4-flash"),
+        base_url="http://localhost:11434",
+        taxonomy=_TAXONOMY,
+        output_language="en",
+        filename_separator="space",
+        chunk_size=1,
+        should_cancel=lambda: True,
+    )
+    assert res.error == "Cancelled"
+    assert calls == ["gemma3:1b"]

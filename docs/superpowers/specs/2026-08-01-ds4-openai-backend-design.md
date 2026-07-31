@@ -137,11 +137,30 @@ fallback per-candidato esistente passa al modello successivo (Ollama).
 
 ## Error handling
 
-- Server giù in discovery → provider non disponibile, candidati solo Ollama.
-- Errore/timeout a runtime → `LLMResponse.error` → il chiamante esistente prova il
-  candidato successivo; nessuna eccezione attraversa il TUI.
+- **Discovery**: solo al mount dell'app e al cambio endpoint nelle Settings. Server ds4 giù
+  in quel momento → nessun candidato `ds4:` viene generato; i candidati restano solo Ollama.
+  Non c'è re-discovery a runtime: se il server torna su a metà sessione, non viene rilevato
+  finché l'utente non riapre le Settings (o riavvia l'app).
+- **Facts** (`extract_facts_item` in `archiver/analyzer.py`, sia branch testo che branch
+  immagine): itera l'intera lista `_text_model_candidates(config)` (che già include il
+  fallback a `[config.text_model]` quando `config.text_models` è vuoto) e chiama
+  `_extract_facts_from_text` con ciascun modello in ordine, fermandosi al primo risultato con
+  `status != "error"`. Un risultato "skipped" (es. bassa confidenza, JSON non parsabile) è un
+  giudizio del modello sul contenuto, non un errore infrastrutturale: non viene ritentato con
+  il candidato successivo. Se tutti i candidati falliscono con errore, viene restituito
+  l'ultimo risultato di errore. Il timing (`llm_time_s`) copre l'intero loop di tentativi, non
+  solo l'ultima chiamata.
+- **Classify**: `normalize_items_with_fallback` (in `archiver/normalizer.py`), chiamato dai due
+  path live in `archiver/app.py` (`_run_classify_batch`, `_run_classify_row`) con
+  `models=text_models` (la tupla ordinata già calcolata per la sessione, incluso l'eventuale
+  override esplicito di `classify_model`). Prova ogni modello in ordine invocando
+  `normalize_items`; si ferma al primo risultato senza errore, oppure con errore `"Cancelled"`
+  (la cancellazione utente non va mai ritentata con un altro modello). Se tutti i modelli
+  falliscono, restituisce l'ultimo risultato di errore.
+- `_try_text_models` in `analyzer.py` ha una logica di fallback equivalente ma è codice morto
+  sui percorsi live (nessun chiamante attuale la usa); lasciata invariata.
 - `finish_reason: "length"` con `content` non-JSON → il normalizer/JSON-repair esistente
-  fa il suo lavoro; se fallisce, si passa al candidato successivo.
+  fa il suo lavoro; se fallisce, il risultato è "skipped" o "error" e segue le regole sopra.
 - Timeout invariati rispetto a Ollama (180 s per facts/classify, 60 s per repair).
 
 ## Testing (manuale — non esiste una test suite)

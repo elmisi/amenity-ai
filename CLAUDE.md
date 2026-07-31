@@ -37,7 +37,9 @@ curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/install.sh | 
 curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/uninstall.sh | sh
 ```
 
-**No test suite currently exists.** There is no Makefile, pytest, or linting configuration.
+A pytest suite exists in `tests/` (unit tests for the LLM routing/config layers). Run it with
+`~/.local/share/amenity-stuff/venv/bin/python -m pytest tests/ -v` (pytest is dev-only,
+deliberately not in `pyproject.toml`). There is still no Makefile or linting configuration.
 
 ## Architecture
 

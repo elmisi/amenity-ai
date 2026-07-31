@@ -18,7 +18,7 @@ from .cache import CacheStore
 from .config import AppConfig, save_config
 from .confirm_screen import ConfirmResult, ConfirmScreen
 from .discovery import DiscoveryResult, discover_providers
-from .normalizer import normalize_items
+from .normalizer import normalize_items, normalize_items_with_fallback
 from .archive_apply import apply_archive_move, archive_dest_for_item
 from .scanner import ScanItem, scan_files
 from .settings import Settings
@@ -596,9 +596,9 @@ class ArchiverApp(App):
             try:
                 batch_size = 12 if len(targets) > 12 else max(4, len(targets))
                 t0 = time.perf_counter()
-                res = normalize_items(
+                res = normalize_items_with_fallback(
                     items=targets,
-                    model=model,
+                    models=text_models,
                     base_url="http://localhost:11434",
                     ds4_base_url=self.settings.ds4_base_url,
                     taxonomy=taxonomy,
@@ -929,9 +929,9 @@ class ArchiverApp(App):
                 stopped = replace(it, status="scanned", reason="Classification stopped")
                 self.call_from_thread(finish_with_item, stopped)
                 return
-            res = normalize_items(
+            res = normalize_items_with_fallback(
                 items=[it],
-                model=model,
+                models=text_models,
                 base_url="http://localhost:11434",
                 ds4_base_url=self.settings.ds4_base_url,
                 taxonomy=taxonomy,

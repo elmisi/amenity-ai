@@ -9,6 +9,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, Static, TextArea
 
 from .archive_picker_screen import ArchivePickerResult, ArchivePickerScreen
+from .llm_router import DS4_PREFIX
 from .taxonomy import (
     get_default_taxonomy_for_language,
     get_effective_language,
@@ -315,7 +316,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         out: list[str] = []
         for m in models:
             ml = m.lower()
-            if ml.startswith("ds4:"):
+            if ml.startswith(DS4_PREFIX):
                 continue
             if any(v in ml for v in ("vision", "llava", "moondream", "minicpm", "bakllava")):
                 out.append(m)

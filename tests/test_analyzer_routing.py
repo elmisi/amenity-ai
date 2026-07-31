@@ -5,6 +5,7 @@ import json
 from archiver import analyzer
 from archiver.analyzer import AnalysisConfig, _classify_from_text, _extract_facts_from_text
 from archiver.ollama_client import OllamaGenerateResult
+from archiver.scanner import ScanItem
 from archiver.taxonomy import DEFAULT_TAXONOMY_LINES, parse_taxonomy_lines
 
 _TAXONOMY, _ = parse_taxonomy_lines(DEFAULT_TAXONOMY_LINES)
@@ -62,3 +63,35 @@ def test_facts_passes_ds4_base_url_to_generate(monkeypatch):
     )
     assert captured["ds4_base_url"] == "http://localhost:8000"
     assert res.status == "scanned"
+
+
+def test_extract_facts_item_falls_back_to_next_model_on_error(tmp_path, monkeypatch):
+    calls: list[str] = []
+
+    def fake_generate(**kwargs):
+        model = kwargs["model"]
+        calls.append(model)
+        if model == "ds4:deepseek-v4-flash":
+            return OllamaGenerateResult(response="", model=model, done=True, error="connection refused")
+        out = json.dumps({"summary_long": "A short letter about a utility bill.", "confidence": 0.9})
+        return OllamaGenerateResult(response=out, model=model, done=True)
+
+    monkeypatch.setattr(analyzer, "generate", fake_generate)
+
+    p = tmp_path / "note.txt"
+    p.write_text("Hello, this is a plain text document used for a routing test.")
+
+    item = ScanItem(
+        path=p,
+        kind="txt",
+        size_bytes=p.stat().st_size,
+        mtime_iso="2026-01-01T00:00:00",
+        status="pending",
+    )
+    cfg = AnalysisConfig(text_models=("ds4:deepseek-v4-flash", "gemma3:1b"))
+
+    res = analyzer.extract_facts_item(item, config=cfg)
+
+    assert res.status == "scanned"
+    assert res.model_used == "gemma3:1b"
+    assert calls == ["ds4:deepseek-v4-flash", "gemma3:1b"]

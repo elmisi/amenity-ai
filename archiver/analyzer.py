@@ -633,19 +633,23 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
             return res
         year_hint_text = _extract_year_hint_from_text(text)
         excerpt = _content_excerpt_for_llm(text, max_chars=10000)
-        model = _text_model_candidates(config)[0] if _text_model_candidates(config) else config.text_model
+        candidates = _text_model_candidates(config)
         t0 = time.perf_counter()
-        res = _extract_facts_from_text(
-            model=model,
-            content=excerpt,
-            filename=path.name,
-            mtime_iso=item.mtime_iso,
-            base_url=config.ollama_base_url,
-            ds4_base_url=config.ds4_base_url,
-            year_hint_filename=year_hint_filename,
-            year_hint_text=year_hint_text,
-            output_language=config.output_language,
-        )
+        res: Optional[FactsResult] = None
+        for candidate_model in candidates:
+            res = _extract_facts_from_text(
+                model=candidate_model,
+                content=excerpt,
+                filename=path.name,
+                mtime_iso=item.mtime_iso,
+                base_url=config.ollama_base_url,
+                ds4_base_url=config.ds4_base_url,
+                year_hint_filename=year_hint_filename,
+                year_hint_text=year_hint_text,
+                output_language=config.output_language,
+            )
+            if res.status != "error":
+                break
         llm_elapsed = time.perf_counter() - t0
         if meta:
             res = replace(
@@ -686,19 +690,25 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
         if img_result.method == "vision+ocr":
             content = _content_excerpt_for_llm(img_result.content, max_chars=max_chars)
 
-        model = _text_model_candidates(config)[0] if _text_model_candidates(config) else config.text_model
+        candidates = _text_model_candidates(config)
+        model = candidates[0]
         t1 = time.perf_counter()
-        res = _extract_facts_from_text(
-            model=model,
-            content=content,
-            filename=path.name,
-            mtime_iso=item.mtime_iso,
-            base_url=config.ollama_base_url,
-            ds4_base_url=config.ds4_base_url,
-            year_hint_filename=year_hint_filename,
-            year_hint_text=year_hint_text,
-            output_language=config.output_language,
-        )
+        res: Optional[FactsResult] = None
+        for candidate_model in candidates:
+            model = candidate_model
+            res = _extract_facts_from_text(
+                model=candidate_model,
+                content=content,
+                filename=path.name,
+                mtime_iso=item.mtime_iso,
+                base_url=config.ollama_base_url,
+                ds4_base_url=config.ds4_base_url,
+                year_hint_filename=year_hint_filename,
+                year_hint_text=year_hint_text,
+                output_language=config.output_language,
+            )
+            if res.status != "error":
+                break
         llm_elapsed = time.perf_counter() - t1
 
         # Build model string
