@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .providers import PROVIDER_NAMES, default_provider_urls, split_model_id
+
 
 @dataclass(frozen=True)
 class AppConfig:
@@ -16,17 +18,30 @@ class AppConfig:
     facts_model: str = "auto"
     classify_model: str = "auto"
     vision_model: str = "auto"
-    vision_model_fallback: str = "none"  # none | auto | llava:7b | minicpm-v | ...
     filename_separator: str = "space"  # space | underscore | dash
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
-    ds4_base_url: str = ""  # OpenAI-compatible endpoint; empty = disabled
-    ollama_base_url: str = "http://localhost:11434"  # may point at another machine
+    providers: dict[str, str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         # Ensure taxonomies is always a dict
         if self.taxonomies is None:
             object.__setattr__(self, "taxonomies", {})
+        merged = default_provider_urls()
+        if self.providers:
+            for name, url in self.providers.items():
+                if name in merged and isinstance(url, str):
+                    merged[name] = url.strip()
+        object.__setattr__(self, "providers", merged)
+
+
+def migrate_model_id(value: str) -> str:
+    """Gli id nudi delle config < 0.12.0 significavano Ollama."""
+    value = (value or "").strip()
+    if not value or value == "auto":
+        return "auto"
+    spec, bare = split_model_id(value)
+    return spec.prefix + bare
 
 
 def _config_path() -> Path:
@@ -63,12 +78,9 @@ def load_config() -> AppConfig:
     classify_model = data.get("classify_model")
     legacy_text_model = data.get("text_model")
     vision_model = data.get("vision_model")
-    vision_model_fallback = data.get("vision_model_fallback")
     filename_separator = data.get("filename_separator")
     ocr_mode = data.get("ocr_mode")
     undated_folder_name = data.get("undated_folder_name")
-    ds4_base_url = data.get("ds4_base_url")
-    ollama_base_url = data.get("ollama_base_url")
 
     kwargs: dict[str, object] = {}
     if isinstance(last_archive, str) and last_archive.strip():
@@ -100,17 +112,15 @@ def load_config() -> AppConfig:
 
     # Backward compat: older configs used a single "text_model" for both phases.
     if isinstance(legacy_text_model, str) and legacy_text_model.strip():
-        legacy = legacy_text_model.strip()
+        legacy = migrate_model_id(legacy_text_model)
         kwargs["facts_model"] = legacy
         kwargs["classify_model"] = legacy
     if isinstance(facts_model, str) and facts_model.strip():
-        kwargs["facts_model"] = facts_model.strip()
+        kwargs["facts_model"] = migrate_model_id(facts_model)
     if isinstance(classify_model, str) and classify_model.strip():
-        kwargs["classify_model"] = classify_model.strip()
+        kwargs["classify_model"] = migrate_model_id(classify_model)
     if isinstance(vision_model, str) and vision_model.strip():
-        kwargs["vision_model"] = vision_model.strip()
-    if isinstance(vision_model_fallback, str) and vision_model_fallback.strip():
-        kwargs["vision_model_fallback"] = vision_model_fallback.strip()
+        kwargs["vision_model"] = migrate_model_id(vision_model)
     if isinstance(filename_separator, str) and filename_separator.strip():
         sep = filename_separator.strip().lower()
         if sep in {"space", "underscore", "dash"}:
@@ -123,10 +133,21 @@ def load_config() -> AppConfig:
         val = undated_folder_name.strip()
         if val:
             kwargs["undated_folder_name"] = val
-    if isinstance(ds4_base_url, str) and ds4_base_url.strip():
-        kwargs["ds4_base_url"] = ds4_base_url.strip()
-    if isinstance(ollama_base_url, str) and ollama_base_url.strip():
-        kwargs["ollama_base_url"] = ollama_base_url.strip()
+    # providers: formato nuovo, con fallback sulle due chiavi piatte < 0.12.0
+    providers = default_provider_urls()
+    providers_raw = data.get("providers")
+    if isinstance(providers_raw, dict):
+        for name, url in providers_raw.items():
+            if name in PROVIDER_NAMES and isinstance(url, str) and url.strip():
+                providers[name] = url.strip()
+    else:
+        legacy_ollama = data.get("ollama_base_url")
+        legacy_ds4 = data.get("ds4_base_url")
+        if isinstance(legacy_ollama, str) and legacy_ollama.strip():
+            providers["ollama"] = legacy_ollama.strip()
+        if isinstance(legacy_ds4, str) and legacy_ds4.strip():
+            providers["ds4"] = legacy_ds4.strip()
+    kwargs["providers"] = providers
     return AppConfig(**kwargs)  # type: ignore[arg-type]
 
 

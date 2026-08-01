@@ -17,12 +17,10 @@ def settings_from_setup(*, current: Settings, setup: SetupResult) -> Settings:
         facts_model=current.facts_model,
         classify_model=current.classify_model,
         vision_model=current.vision_model,
-        vision_model_fallback=current.vision_model_fallback,
         filename_separator=current.filename_separator,
         ocr_mode=current.ocr_mode,
         undated_folder_name=current.undated_folder_name,
-        ds4_base_url=current.ds4_base_url,
-        ollama_base_url=current.ollama_base_url,
+        providers=current.providers,
         skip_initial_setup=current.skip_initial_setup,
     )
 
@@ -36,11 +34,9 @@ def app_config_from_settings(settings: Settings) -> AppConfig:
         facts_model=settings.facts_model,
         classify_model=settings.classify_model,
         vision_model=settings.vision_model,
-        vision_model_fallback=settings.vision_model_fallback,
         filename_separator=settings.filename_separator,
         ocr_mode=settings.ocr_mode,
         undated_folder_name=settings.undated_folder_name,
-        ds4_base_url=settings.ds4_base_url,
-        ollama_base_url=settings.ollama_base_url,
+        providers=settings.providers,
     )
 

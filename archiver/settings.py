@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .providers import default_provider_urls
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -39,18 +41,22 @@ class Settings:
     facts_model: str = "auto"
     classify_model: str = "auto"
     vision_model: str = "auto"
-    vision_model_fallback: str = "none"  # none | auto | llava:7b | minicpm-v | ...
     filename_separator: str = "space"  # space | underscore | dash
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
-    ds4_base_url: str = ""  # OpenAI-compatible endpoint; empty = disabled
-    ollama_base_url: str = "http://localhost:11434"  # may point at another machine
+    providers: dict[str, str] = None  # type: ignore[assignment]
     skip_initial_setup: bool = False
 
     def __post_init__(self) -> None:
         # Ensure taxonomies is always a dict
         if self.taxonomies is None:
             object.__setattr__(self, "taxonomies", {})
+        merged = default_provider_urls()
+        if self.providers:
+            for name, url in self.providers.items():
+                if name in merged and isinstance(url, str):
+                    merged[name] = url.strip()
+        object.__setattr__(self, "providers", merged)
 
     def get_taxonomy_lines(self) -> tuple[str, ...]:
         """Get the taxonomy lines for the effective language."""

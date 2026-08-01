@@ -81,12 +81,10 @@ def main() -> None:
         facts_model=cfg.facts_model,
         classify_model=cfg.classify_model,
         vision_model=cfg.vision_model,
-        vision_model_fallback=cfg.vision_model_fallback,
         filename_separator=cfg.filename_separator,
         ocr_mode=cfg.ocr_mode,
         undated_folder_name=cfg.undated_folder_name,
-        ds4_base_url=cfg.ds4_base_url,
-        ollama_base_url=cfg.ollama_base_url,
+        providers=cfg.providers,
         skip_initial_setup=skip_setup,
     )
     # Disable mouse tracking so the terminal can do native text selection (copy with mouse).

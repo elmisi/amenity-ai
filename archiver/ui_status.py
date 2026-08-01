@@ -45,35 +45,30 @@ def status_cell(status: str) -> Text:
     return Text(icon, style=style)
 
 
-def provider_summary(discovery: "DiscoveryResult | None", settings: "Settings", *, model_picker) -> str:
+def provider_summary(discovery: "DiscoveryResult | None", settings: "Settings") -> str:
     if not discovery:
         return ""
-    names: list[str] = []
-    models: tuple[str, ...] = ()
-    for p in discovery.providers:
-        if p.available:
-            names.append(p.name)
-            models = models + p.models
-        elif p.name == "ollama":
-            names.append("ollama(down)")
+    from .model_selection import ROLE_CLASSIFY, ROLE_FACTS, ROLE_VISION, rank_models
+
+    names = [s.name if s.available else f"{s.name}(down)"
+             for s in discovery.providers if s.configured]
     if not names:
         return ""
-    provider = "+".join(names)
+    models = discovery.models
 
-    text_models, vision_models = model_picker(discovery)
-    facts = settings.facts_model if settings.facts_model and settings.facts_model != "auto" else (text_models[0] if text_models else "auto")
-    classify = (
-        settings.classify_model
-        if settings.classify_model and settings.classify_model != "auto"
-        else (text_models[0] if text_models else "auto")
+    def pick(pinned: str, role: str) -> str:
+        if pinned and pinned != "auto":
+            return pinned
+        ranked = rank_models(models, role)
+        return ranked[0] if ranked else "none"
+
+    count = f"{len(models)} models" if models else "no models"
+    return (
+        f"{'+'.join(names)} • {count}"
+        f" • facts={pick(settings.facts_model, ROLE_FACTS)}"
+        f" • classify={pick(settings.classify_model, ROLE_CLASSIFY)}"
+        f" • vision={pick(settings.vision_model, ROLE_VISION)}"
     )
-    if settings.vision_model and settings.vision_model != "auto":
-        vision = settings.vision_model
-    else:
-        vision = vision_models[0] if vision_models else "auto"
-
-    models_count = f"{len(models)} models" if models else "no models"
-    return f"{provider} • {models_count} • facts={facts} • classify={classify} • vision={vision}"
 
 
 def notes_line(
