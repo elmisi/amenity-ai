@@ -130,7 +130,15 @@ success "Found $PYTHON_CMD ($PYTHON_VER)"
 if [ -d "$INSTALL_DIR" ]; then
     warn "Existing installation found at $INSTALL_DIR"
     printf "Reinstall? [y/N] "
-    read -r answer
+    # Under `curl | sh` stdin is the script-carrying pipe, not the keyboard:
+    # read the answer from the controlling terminal when one is available.
+    # `|| answer=""` keeps EOF from aborting the script under `set -e`
+    # (headless/CI runs fall through to the safe default: cancel).
+    if (exec < /dev/tty) 2>/dev/null; then
+        read -r answer < /dev/tty || answer=""
+    else
+        read -r answer || answer=""
+    fi
     case "$answer" in
         [Yy]*)
             info "Removing existing installation..."
