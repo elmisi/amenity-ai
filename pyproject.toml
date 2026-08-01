@@ -4,18 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amenity-ai"
-version = "0.10.0"
+version = "0.10.1"
 description = "Terminal UI to analyze and organize files using local LLMs (Ollama or any OpenAI-compatible server)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [{name = "amenity-ai contributors"}]
 dependencies = [
-  "textual>=0.60,<1",
-  "pypdf>=4,<6",
-  "pymupdf>=1.24,<2",
+  "textual>=8.2,<9",
+  "pypdf>=6,<7",
+  "pymupdf>=1.28,<2",
   "pytesseract>=0.3,<1",
-  "Pillow>=10,<12",
+  "Pillow>=12,<13",
 ]
 
 [project.urls]
