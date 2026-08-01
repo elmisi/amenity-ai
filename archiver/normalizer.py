@@ -28,7 +28,15 @@ from .utils_parsing import (
 )
 from .prompts import build_normalize_batch_prompt
 
-_NORMALIZE_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 220}
+def _normalize_options(batch_size: int) -> dict:
+    """Token ceiling for one normalization call.
+
+    Each item costs a JSON row (category, year, proposed name, summary), so the
+    budget has to grow with the batch: a fixed 220 could not fit even two rows,
+    which silently truncated every batch and forced the per-item fallback.
+    """
+    return {"temperature": 0, "num_predict": max(800, 300 * max(1, batch_size))}
+
 _NORMALIZE_RESPONSE_SCHEMA = {
     "type": "array",
     "items": {
@@ -429,7 +437,7 @@ def normalize_items(
             response_format=_NORMALIZE_RESPONSE_SCHEMA,
             think=False,
             keep_alive="5m",
-            options=_NORMALIZE_GENERATE_OPTIONS,
+            options=_normalize_options(len(batch)),
         )
         if gen.error:
             if len(batch) > 1:

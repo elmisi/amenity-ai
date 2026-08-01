@@ -58,6 +58,8 @@ Configurable items include:
 - output language (`auto`, `it`, `en`)
 - taxonomy (categories defined by the user)
 - text/vision model selection (Ollama models)
+- LLM endpoints: Ollama URL (default `http://localhost:11434`) and the optional
+  OpenAI-compatible ds4 URL — either may point at another machine on the local network
 - filename separator (space vs underscore)
 - OCR mode
 

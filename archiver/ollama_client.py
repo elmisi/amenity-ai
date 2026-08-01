@@ -99,10 +99,15 @@ class OllamaBackend(BaseLLMBackend):
         try:
             data = _post_json(url, payload, timeout_s=timeout_s)
             error = data.get("error") if isinstance(data.get("error"), str) else None
+            if error is None and data.get("done_reason") == "length":
+                # Hit the num_predict ceiling: the payload is cut mid-token and any
+                # JSON in it is unparseable. Report it so the caller falls through to
+                # the next candidate instead of "repairing" truncated garbage.
+                error = "ollama: output truncated by num_predict"
             return LLMResponse(
-                text=str(data.get("response", "")),
+                text="" if error else str(data.get("response", "")),
                 model=data.get("model"),
-                done=data.get("done", True),
+                done=data.get("done", True) and error is None,
                 error=error,
             )
         except Exception as exc:

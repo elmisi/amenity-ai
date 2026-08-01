@@ -55,7 +55,7 @@ def provider_summary(discovery: "DiscoveryResult | None", settings: "Settings", 
             names.append(p.name)
             models = models + p.models
         elif p.name == "ollama":
-            names.append("ollama(missing)")
+            names.append("ollama(down)")
     if not names:
         return ""
     provider = "+".join(names)

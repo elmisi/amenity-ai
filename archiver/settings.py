@@ -44,6 +44,7 @@ class Settings:
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
     ds4_base_url: str = ""  # OpenAI-compatible endpoint; empty = disabled
+    ollama_base_url: str = "http://localhost:11434"  # may point at another machine
     skip_initial_setup: bool = False
 
     def __post_init__(self) -> None:
