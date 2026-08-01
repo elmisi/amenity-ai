@@ -56,6 +56,7 @@ You can change:
 - output language (`auto`, `it`, `en`)
 - taxonomy (allowed categories)
 - models (facts / classify / vision / vision fallback), archive folder, filename separator, OCR mode
+- ollama endpoint (default `http://localhost:11434`, may be a remote host)
 - ds4 endpoint (OpenAI-compatible server, optional)
 
 Press `F2` in the TUI to open Settings. Configuration is stored in `~/.config/amenity-stuff/config.json`.
@@ -117,9 +118,12 @@ RTF is supported without dependencies via a naive fallback, but you get better r
 
 ## LLM Provider
 
-On startup the app tries to detect:
-- `ollama` (if available in `PATH`)
-- the ds4 endpoint (`GET /v1/models`), if one is configured in Settings (see below)
+On startup the app probes the configured endpoints:
+- Ollama — `GET /api/tags` on the configured URL (default `http://localhost:11434`)
+- the ds4 endpoint — `GET /v1/models`, if one is configured (see below)
+
+Both servers may run on another machine on your local network: set their URLs in
+Settings (`F2`). Nothing is sent outside the machines you point the app at.
 
 Models: the app uses a text model and (for images) a vision model; exact model names are configurable.
 

@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-08-01
+
+- The Ollama endpoint is now configurable (Settings → ollama endpoint, default
+  `http://localhost:11434`), so Ollama can run on another machine on the local
+  network. Provider discovery now probes `GET /api/tags` over HTTP instead of
+  shelling out to the `ollama` CLI, which is what makes remote hosts work.
+- Fix silently degraded results with mid-size Ollama models: generation ceilings
+  (`num_predict`) were tuned for 1B models and truncated larger ones mid-JSON,
+  and a truncated reply (`done_reason: "length"`) was treated as success. The
+  ceilings are now sized for 7-8B models, the normalization budget scales with
+  the batch, and a truncated reply is reported as an error so the pipeline falls
+  through to the next model candidate.
+
 ## [0.10.1] - 2026-08-01
 
 - Update dependency ranges to current major versions: textual 8.x (from 0.6x),

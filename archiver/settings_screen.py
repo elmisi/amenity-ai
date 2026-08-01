@@ -128,7 +128,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         yield Static(self._provider_info or "Provider: (unknown)", id="provider", markup=False)
         yield Static("ds4 endpoint (OpenAI-compatible, empty = disabled):", id="ds4_label")
         yield Input(value=self._ds4_base_url, placeholder="http://localhost:8000", id="ds4_url")
-        yield Static("ollama endpoint:", id="ollama_label")
+        yield Static("ollama endpoint (empty = http://localhost:11434):", id="ollama_label")
         yield Input(value=self._ollama_base_url, placeholder="http://localhost:11434", id="ollama_url")
         yield OptionList(*self._render_options(), id="options")
         lang = self._get_effective_lang()

@@ -62,7 +62,9 @@ User approval → Move to archive/{category}/{year}/
 Adding a user-facing setting means touching both dataclasses, `__main__.py` wiring, and `settings_screen.py`.
 
 ### Model Selection ("auto")
-- `discovery.py` detects Ollama at startup; `model_selection.py` lists installed models and builds text/vision candidate lists
+- `discovery.py` probes both providers over HTTP at startup (Ollama `GET /api/tags`,
+  ds4 `GET /v1/models`); both endpoints are configurable and may be remote.
+  `model_selection.py` merges their models into text/vision candidate lists
 - `task_builders.build_analysis_config()` orders candidates: facts extraction prefers small/fast models (e.g. `gemma3:1b`, `qwen2.5:3b-instruct`); classify has its own preference order in `app.py`; a vision fallback model is appended per settings
 - Analysis tries candidates in order until one succeeds. LLM calls pin `temperature=0`, JSON response format, `keep_alive="5m"`, and capped `num_predict` (constants in `analyzer.py`); content is excerpted head+tail to ~10k chars before prompting
 - A second provider ("ds4", any OpenAI-compatible server) is routed by model-id prefix:
