@@ -30,6 +30,7 @@ class SettingsResult:
     undated_folder_name: str
     archive_root: Path
     ds4_base_url: str
+    ollama_base_url: str
 
 
 class SettingsScreen(ModalScreen[SettingsResult]):
@@ -43,6 +44,8 @@ class SettingsScreen(ModalScreen[SettingsResult]):
     #errors { height: auto; color: $error; }
     #ds4_label { height: auto; padding: 1 0 0 0; }
     #ds4_url { height: 3; }
+    #ollama_label { height: auto; padding: 1 0 0 0; }
+    #ollama_url { height: 3; }
     """
 
     BINDINGS = [
@@ -68,12 +71,14 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         undated_folder_name: str,
         archive_root: Path,
         ds4_base_url: str,
+        ollama_base_url: str,
         available_models: tuple[str, ...],
         provider_info: str,
     ) -> None:
         super().__init__()
         self._provider_info = provider_info.strip()
         self._ds4_base_url = (ds4_base_url or "").strip()
+        self._ollama_base_url = (ollama_base_url or "").strip() or "http://localhost:11434"
         self._output_language = output_language if output_language in {"auto", "it", "en"} else "auto"
         self._taxonomies: dict[str, tuple[str, ...]] = dict(taxonomies) if taxonomies else {}
         self._facts_model = facts_model or "auto"
@@ -123,6 +128,8 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         yield Static(self._provider_info or "Provider: (unknown)", id="provider", markup=False)
         yield Static("ds4 endpoint (OpenAI-compatible, empty = disabled):", id="ds4_label")
         yield Input(value=self._ds4_base_url, placeholder="http://localhost:8000", id="ds4_url")
+        yield Static("ollama endpoint:", id="ollama_label")
+        yield Input(value=self._ollama_base_url, placeholder="http://localhost:11434", id="ollama_url")
         yield OptionList(*self._render_options(), id="options")
         lang = self._get_effective_lang()
         yield Static(f"Taxonomy [{lang.upper()}] (one category per line): name | description | examples", id="taxonomy_label")
@@ -151,6 +158,13 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         except Exception:
             return self._ds4_base_url
 
+    def _current_ollama_url(self) -> str:
+        try:
+            value = self.query_one("#ollama_url", Input).value.strip()
+        except Exception:
+            return self._ollama_base_url
+        return value or "http://localhost:11434"
+
     def action_cancel(self) -> None:
         self.dismiss(
             SettingsResult(
@@ -165,6 +179,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
                 ds4_base_url=self._current_ds4_url(),
+                ollama_base_url=self._current_ollama_url(),
             )
         )
 
@@ -299,6 +314,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
                 ds4_base_url=self._current_ds4_url(),
+                ollama_base_url=self._current_ollama_url(),
             )
         )
 

@@ -345,6 +345,7 @@ class ArchiverApp(App):
                 undated_folder_name=self.settings.undated_folder_name,
                 archive_root=self.settings.archive_root,
                 ds4_base_url=self.settings.ds4_base_url,
+                ollama_base_url=self.settings.ollama_base_url,
                 available_models=available_models,
                 provider_info=provider_info,
             ),
@@ -356,7 +357,10 @@ class ArchiverApp(App):
         self.push_screen(HelpScreen(), wait_for_dismiss=False)
 
     def _on_settings_done(self, result: SettingsResult) -> None:
-        ds4_changed = result.ds4_base_url != self.settings.ds4_base_url
+        endpoints_changed = (
+            result.ds4_base_url != self.settings.ds4_base_url
+            or result.ollama_base_url != self.settings.ollama_base_url
+        )
         self.settings = replace(
             self.settings,
             output_language=result.output_language,
@@ -370,11 +374,12 @@ class ArchiverApp(App):
             ocr_mode=result.ocr_mode,
             undated_folder_name=result.undated_folder_name,
             ds4_base_url=result.ds4_base_url,
+            ollama_base_url=result.ollama_base_url,
         )
         self.query_one("#arc", Static).update(f"Archive: {self.settings.archive_root}")
         self._save_app_config()
         self._render_notes()
-        if ds4_changed:
+        if endpoints_changed:
             self.run_worker(self._run_discovery())
 
     async def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
