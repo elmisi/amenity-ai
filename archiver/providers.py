@@ -8,8 +8,8 @@ mutuamente esclusivo, quindi una scansione lunga lo monopolizzerebbe.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Optional
 
 KIND_OLLAMA = "ollama"
 KIND_OPENAI_COMPAT = "openai_compat"
@@ -21,12 +21,20 @@ class ProviderSpec:
     kind: str
     prefix: str
     default_url: str = ""
-    sends_reasoning_effort: bool = False
+    # Campi da aggiungere al payload per spegnere il ragionamento. Ogni server
+    # ha la sua leva e ignora silenziosamente quella degli altri, quindi un
+    # flag booleano unico non basta: serve sapere QUALE chiave usare.
+    thinking_off: Mapping[str, Any] = field(default_factory=dict)
     supports_install: bool = False
 
 
 PROVIDERS: tuple[ProviderSpec, ...] = (
-    ProviderSpec("vllm", KIND_OPENAI_COMPAT, "vllm:"),
+    ProviderSpec(
+        "vllm",
+        KIND_OPENAI_COMPAT,
+        "vllm:",
+        thinking_off={"chat_template_kwargs": {"enable_thinking": False}},
+    ),
     ProviderSpec(
         "ollama",
         KIND_OLLAMA,
@@ -34,7 +42,12 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_url="http://localhost:11434",
         supports_install=True,
     ),
-    ProviderSpec("ds4", KIND_OPENAI_COMPAT, "ds4:", sends_reasoning_effort=True),
+    ProviderSpec(
+        "ds4",
+        KIND_OPENAI_COMPAT,
+        "ds4:",
+        thinking_off={"reasoning_effort": "low"},
+    ),
 )
 
 PROVIDER_NAMES: tuple[str, ...] = tuple(p.name for p in PROVIDERS)

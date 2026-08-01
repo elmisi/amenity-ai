@@ -99,8 +99,8 @@ class OpenAICompatBackend(BaseLLMBackend):
             "stream": False,
             "max_tokens": max_tokens,
         }
-        if think is False and self.spec is not None and self.spec.sends_reasoning_effort:
-            payload["reasoning_effort"] = "low"
+        if think is False and self.spec is not None and self.spec.thinking_off:
+            payload.update(self.spec.thinking_off)
         temperature = (options or {}).get("temperature")
         if isinstance(temperature, (int, float)):
             payload["temperature"] = temperature

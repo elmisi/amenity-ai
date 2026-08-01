@@ -81,6 +81,36 @@ def test_image_file_goes_to_ollama_as_base64(monkeypatch, tmp_path):
     assert base64.b64decode(sent).startswith(b"\x89PNG")
 
 
+def test_captioning_switches_reasoning_off_on_openai_compat_providers(monkeypatch, tmp_path):
+    # Senza questo la didascalia costa un monologo: misurato 59.5s contro 5.5s
+    # su vLLM per la stessa immagine, con lo stesso risultato.
+    png = tmp_path / "a.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\nrest")
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OpenAICompatBackend", spy)
+
+    llm_router.generate_with_image_file(
+        model="vllm:qwen3.6-27b", prompt="what", image_path=str(png), provider_urls=URLS
+    )
+
+    assert spy.calls[0]["think"] is False
+
+
+def test_captioning_leaves_ollama_untouched(monkeypatch, tmp_path):
+    # Non tutti i modelli vision di Ollama accettano `think`: su quel percorso
+    # la richiesta resta identica a prima.
+    png = tmp_path / "a.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\nrest")
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OllamaBackend", spy)
+
+    llm_router.generate_with_image_file(
+        model="ollama:moondream:latest", prompt="what", image_path=str(png), provider_urls=URLS
+    )
+
+    assert spy.calls[0]["think"] is None
+
+
 def test_image_file_now_works_on_openai_compat_providers(monkeypatch, tmp_path):
     png = tmp_path / "a.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\nrest")

@@ -82,6 +82,7 @@ def generate_with_image_file(
 ) -> OllamaGenerateResult:
     with open(image_path, "rb") as handle:
         b64 = base64.b64encode(handle.read()).decode("ascii")
+    spec, _ = split_model_id(model)
     return generate(
         model=model,
         prompt=prompt,
@@ -89,4 +90,9 @@ def generate_with_image_file(
         timeout_s=timeout_s,
         images_b64=[b64],
         keep_alive="5m",
+        # Una didascalia di una riga non ha niente su cui ragionare, e un
+        # modello reasoning ci spende un ordine di grandezza in più. Su Ollama
+        # il flag resta non impostato: non tutti i suoi modelli vision lo
+        # accettano, e lì il costo del ragionamento non si presenta.
+        think=False if spec.kind != KIND_OLLAMA else None,
     )

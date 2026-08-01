@@ -49,9 +49,19 @@ def test_join_split_round_trip(provider, bare):
     assert (spec.name, out) == (provider, bare)
 
 
-def test_only_ollama_supports_install_and_only_ds4_sends_reasoning_effort():
+def test_only_ollama_supports_install():
     assert [p.name for p in PROVIDERS if p.supports_install] == ["ollama"]
-    assert [p.name for p in PROVIDERS if p.sends_reasoning_effort] == ["ds4"]
+
+
+def test_each_openai_compat_provider_knows_how_to_switch_reasoning_off():
+    # Misurato il 2026-08-02 su vLLM 0.21 con qwen3.6-27b: reasoning_effort è
+    # accettato e ignorato (55.2s con e senza), mentre enable_thinking=False
+    # porta la stessa richiesta a 2.2s. Una leva per provider, non una sola.
+    by_name = {p.name: p for p in PROVIDERS}
+    assert by_name["vllm"].thinking_off == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert by_name["ds4"].thinking_off == {"reasoning_effort": "low"}
+    # Ollama ha il suo parametro `think` nativo, gestito dal suo backend.
+    assert by_name["ollama"].thinking_off == {}
 
 
 def test_default_urls_have_no_real_hostnames():

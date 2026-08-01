@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   yours. Cancel with `x`. Exit code is non-zero when a check fails.
 - Vision now works on OpenAI-compatible servers. Image captioning used to talk
   to Ollama directly, so a multimodal model served by vLLM was unusable.
+- Reasoning models are asked not to reason when there is nothing to reason
+  about. Each provider gets its own lever, because they silently ignore each
+  other's: vLLM takes `chat_template_kwargs.enable_thinking`, ds4 takes
+  `reasoning_effort`, Ollama has its native `think`. Captioning switches it off
+  too, which it previously did not. Measured on one photo through the whole
+  pipeline: 168s to 17s, with an equivalent summary.
 
 ### Changed
 - Model selection is driven by real metadata instead of three hardcoded

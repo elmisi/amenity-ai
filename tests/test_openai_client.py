@@ -62,18 +62,28 @@ def test_text_only_prompt_stays_a_plain_string(monkeypatch):
     assert captured["payload"]["messages"][0]["content"] == "hi"
 
 
-def test_reasoning_effort_is_sent_only_for_ds4(monkeypatch):
+def test_each_provider_switches_reasoning_off_with_its_own_lever(monkeypatch):
     captured = _capture(monkeypatch, _ok())
     OpenAICompatBackend("http://ds4.invalid", provider_by_name("ds4")).generate(
         prompt="hi", model="deepseek-v4-flash", think=False
     )
     assert captured["payload"]["reasoning_effort"] == "low"
 
+    # vLLM accetta reasoning_effort e lo ignora: serve la sua leva.
     captured = _capture(monkeypatch, _ok())
     OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm")).generate(
         prompt="hi", model="qwen3.6-27b", think=False
     )
+    assert captured["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert "reasoning_effort" not in captured["payload"]
+
+
+def test_reasoning_stays_on_when_think_was_not_requested(monkeypatch):
+    captured = _capture(monkeypatch, _ok())
+    OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm")).generate(
+        prompt="hi", model="qwen3.6-27b"
+    )
+    assert "chat_template_kwargs" not in captured["payload"]
 
 
 def test_max_tokens_is_capped_by_declared_context_length(monkeypatch):
