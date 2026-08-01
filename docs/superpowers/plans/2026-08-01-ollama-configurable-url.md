@@ -610,6 +610,8 @@ git commit -m "feat: add ollama endpoint field to settings and guard its hostnam
 
 ### Task 4: Docs, version bump, manual PTY verification
 
+**Runs LAST** — after Task 5 (Ollama truncation fix), so the release covers it.
+
 **Files:**
 - Modify: `README.md` (LLM Provider section; Settings list), `PROJECT_SPEC.md` (Configuration section), `CLAUDE.md` (Model Selection section)
 - Modify: `VERSION` (`0.10.1` → `0.11.0`), `pyproject.toml` (version only), `CHANGELOG.md`
@@ -669,6 +671,12 @@ In `### Model Selection ("auto")`, replace the first bullet:
   `http://localhost:11434`), so Ollama can run on another machine on the local
   network. Provider discovery now probes `GET /api/tags` over HTTP instead of
   shelling out to the `ollama` CLI, which is what makes remote hosts work.
+- Fix silently degraded results with mid-size Ollama models: generation ceilings
+  (`num_predict`) were tuned for 1B models and truncated larger ones mid-JSON,
+  and a truncated reply (`done_reason: "length"`) was treated as success. The
+  ceilings are now sized for 7-8B models, the normalization budget scales with
+  the batch, and a truncated reply is reported as an error so the pipeline falls
+  through to the next model candidate.
 ```
 
 - [ ] **Step 5: Reinstall and run the automated suite**
@@ -701,6 +709,172 @@ Checklist:
 sh scripts/check_no_private_host.sh   # must print OK
 git add README.md PROJECT_SPEC.md CLAUDE.md VERSION pyproject.toml CHANGELOG.md
 git commit -m "docs: document configurable ollama endpoint; release 0.11.0"
+```
+
+---
+
+### Task 5: Surface Ollama truncation and right-size the token budgets
+
+**Runs BEFORE Task 4** (Task 4 releases the version and its CHANGELOG entry covers this fix too).
+
+**Context — why this task exists:** e2e verification against a real remote Ollama (an 8B model) showed facts extraction returning empty content on a perfectly readable document. Root cause, with evidence from the live server: `num_predict: 400` truncates the facts JSON mid-string (`done_reason: "length"`, `eval_count: 400`, output unparseable), and `OllamaBackend.generate` ignores `done_reason`, so the truncated text flows into the JSON-repair path, which "succeeds" with empty fields instead of failing over to the next candidate. Same defect class as the ds4 `finish_reason: "length"` fix already shipped in 0.10.0 — the Ollama side never got it. The caps were tuned for tiny models (`gemma3:1b`); any mid-size model degrades silently today. `num_predict` is a ceiling, not a target, so raising it costs nothing for models that finish early.
+
+**Files:**
+- Modify: `archiver/ollama_client.py` (`OllamaBackend.generate` response handling)
+- Modify: `archiver/analyzer.py` (`_JSON_REPAIR_OPTIONS` line 211, `_FACTS_GENERATE_OPTIONS` line 212, `_CLASSIFY_GENERATE_OPTIONS` line 213)
+- Modify: `archiver/normalizer.py` (`_NORMALIZE_GENERATE_OPTIONS` line 31 → batch-scaled helper; its use at line 432)
+- Test: `tests/test_ollama_truncation.py` (create)
+
+**Interfaces:**
+- Consumes: `LLMResponse` from `archiver/llm_backend.py`.
+- Produces: `normalizer._normalize_options(batch_size: int) -> dict` (module-level helper replacing the `_NORMALIZE_GENERATE_OPTIONS` constant).
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/test_ollama_truncation.py`:
+
+```python
+from __future__ import annotations
+
+from archiver import ollama_client
+from archiver.normalizer import _normalize_options
+from archiver.ollama_client import OllamaBackend
+
+
+def _response(text: str = '{"ok": true}', done_reason: str = "stop") -> dict:
+    return {"model": "qwen3:8b", "response": text, "done": True, "done_reason": done_reason}
+
+
+def test_generate_flags_truncated_output_as_error(monkeypatch):
+    monkeypatch.setattr(
+        ollama_client, "_post_json",
+        lambda url, payload, *, timeout_s: _response('{"partial": "cut off mid-str', done_reason="length"),
+    )
+    resp = OllamaBackend("http://localhost:11434").generate(prompt="q", model="qwen3:8b")
+    assert not resp.success
+    assert "truncated" in (resp.error or "")
+
+
+def test_generate_accepts_normal_completion(monkeypatch):
+    monkeypatch.setattr(
+        ollama_client, "_post_json",
+        lambda url, payload, *, timeout_s: _response(),
+    )
+    resp = OllamaBackend("http://localhost:11434").generate(prompt="q", model="qwen3:8b")
+    assert resp.success
+    assert resp.text == '{"ok": true}'
+
+
+def test_generate_without_done_reason_still_succeeds(monkeypatch):
+    # Older Ollama versions omit done_reason entirely.
+    monkeypatch.setattr(
+        ollama_client, "_post_json",
+        lambda url, payload, *, timeout_s: {"model": "gemma3:1b", "response": "hi", "done": True},
+    )
+    resp = OllamaBackend("http://localhost:11434").generate(prompt="q", model="gemma3:1b")
+    assert resp.success
+
+
+def test_normalize_options_scale_with_batch_size():
+    single = _normalize_options(1)
+    batch = _normalize_options(12)
+    assert single["temperature"] == 0
+    assert single["num_predict"] >= 800
+    assert batch["num_predict"] >= 12 * 250       # one row per item needs its own budget
+    assert batch["num_predict"] > single["num_predict"]
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `~/.local/share/amenity-stuff/venv/bin/python -m pytest tests/test_ollama_truncation.py -v`
+Expected: FAIL — `cannot import name '_normalize_options'`; and the truncation test fails because `generate` currently returns success for `done_reason: "length"`
+
+- [ ] **Step 3: Surface truncation in `archiver/ollama_client.py`**
+
+In `OllamaBackend.generate`, replace the success-path return with a truncation check first. The current block is:
+
+```python
+            data = _post_json(url, payload, timeout_s=timeout_s)
+            error = data.get("error") if isinstance(data.get("error"), str) else None
+            return LLMResponse(
+                text=str(data.get("response", "")),
+                model=data.get("model"),
+                done=data.get("done", True),
+                error=error,
+            )
+```
+
+becomes:
+
+```python
+            data = _post_json(url, payload, timeout_s=timeout_s)
+            error = data.get("error") if isinstance(data.get("error"), str) else None
+            if error is None and data.get("done_reason") == "length":
+                # Hit the num_predict ceiling: the payload is cut mid-token and any
+                # JSON in it is unparseable. Report it so the caller falls through to
+                # the next candidate instead of "repairing" truncated garbage.
+                error = "ollama: output truncated by num_predict"
+            return LLMResponse(
+                text="" if error else str(data.get("response", "")),
+                model=data.get("model"),
+                done=data.get("done", True) and error is None,
+                error=error,
+            )
+```
+
+- [ ] **Step 4: Right-size the budgets in `archiver/analyzer.py`**
+
+Replace the three constants (lines 211-213) with:
+
+```python
+# num_predict is a ceiling, not a target: models that finish earlier cost nothing
+# extra. These are sized so a mid-size model (7-8B) can emit a complete JSON object;
+# the previous values were tuned for 1B models and truncated everything larger.
+_JSON_REPAIR_OPTIONS = {"temperature": 0, "num_predict": 1500}
+_FACTS_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 2000}
+_CLASSIFY_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 1200}
+```
+
+(The repair call must re-emit a whole facts object, so it needs a budget in the same league as facts itself — 220 could not have repaired anything but the shortest output.)
+
+- [ ] **Step 5: Scale the normalize budget with batch size in `archiver/normalizer.py`**
+
+Replace the constant at line 31:
+
+```python
+_NORMALIZE_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 220}
+```
+
+with a helper:
+
+```python
+def _normalize_options(batch_size: int) -> dict:
+    """Token ceiling for one normalization call.
+
+    Each item costs a JSON row (category, year, proposed name, summary), so the
+    budget has to grow with the batch: a fixed 220 could not fit even two rows,
+    which silently truncated every batch and forced the per-item fallback.
+    """
+    return {"temperature": 0, "num_predict": max(800, 300 * max(1, batch_size))}
+```
+
+and at the `generate(...)` call (line ~432):
+
+```python
+            options=_normalize_options(len(batch)),
+```
+
+- [ ] **Step 6: Run the full suite**
+
+Run: `~/.local/share/amenity-stuff/venv/bin/python -m pytest tests/ -v`
+Expected: all PASS (previous total + 4 new). If a pre-existing test asserted the old constants, update it to the new values and say so in your report.
+
+- [ ] **Step 7: Commit**
+
+```bash
+sh scripts/check_no_private_host.sh   # must print OK
+git add archiver/ollama_client.py archiver/analyzer.py archiver/normalizer.py tests/test_ollama_truncation.py
+git commit -m "fix: surface ollama truncation and right-size token budgets"
 ```
 
 ---
