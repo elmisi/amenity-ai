@@ -27,7 +27,9 @@ The long-term goal is to help users turn a “messy folder” into a clean archi
    - a coherent **proposed filename** (without redundantly repeating category/year when not necessary)
 
 ## Non-goals (for now)
-- No remote providers are supported (local Ollama only).
+- No cloud/remote providers are supported. Everything runs on the user's own
+  machines: Ollama locally, plus optionally any OpenAI-compatible server on the
+  local network ("ds4", configured via Settings → ds4 endpoint; text-only).
 - No automatic “approve plan and apply” flow yet (moving is manual).
 
 ## UX Requirements (TUI)

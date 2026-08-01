@@ -119,6 +119,7 @@ RTF is supported without dependencies via a naive fallback, but you get better r
 
 On startup the app tries to detect:
 - `ollama` (if available in `PATH`)
+- the ds4 endpoint (`GET /v1/models`), if one is configured in Settings (see below)
 
 Models: the app uses a text model and (for images) a vision model; exact model names are configurable.
 
