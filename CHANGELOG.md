@@ -5,6 +5,39 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-08-01
+
+### Added
+- vLLM is now a first-class provider alongside Ollama and ds4. Configuration is
+  three endpoints and nothing else: the app discovers the available models by
+  itself, in parallel, one request per provider.
+- `amenity-ai doctor`, and `d` in the TUI: checks every provider and reports
+  whether a semantic model and a vision model are actually usable. When a model
+  is missing it offers a curated shortlist with sizes and can install it —
+  bearing in mind the download happens on the machine hosting Ollama, not on
+  yours. Cancel with `x`. Exit code is non-zero when a check fails.
+- Vision now works on OpenAI-compatible servers. Image captioning used to talk
+  to Ollama directly, so a multimodal model served by vLLM was unusable.
+
+### Changed
+- Model selection is driven by real metadata instead of three hardcoded
+  preference lists: provider priority (`vllm > ollama > ds4`) first, then a size
+  band chosen per role, then a hand-maintained list used only to break ties.
+- Every model id now carries its provider prefix (`ollama:`, `vllm:`, `ds4:`).
+- Capabilities come from the provider when it declares them, from a live probe
+  when the doctor runs, and only otherwise from the model name. The probe result
+  is remembered, because guessing from the name has real false negatives: a
+  multimodal model served over the OpenAI API need not say so in its name.
+
+### Removed
+- The "vision fallback" setting: the ranking already produces an ordered list of
+  vision candidates, so a separate second choice had nothing left to add.
+
+### Migration
+Existing configurations are migrated automatically on first load: the two flat
+endpoint fields become the new mapping, and bare model ids gain the `ollama:`
+prefix. No manual action is required.
+
 ## [0.11.0] - 2026-08-01
 
 - The Ollama endpoint is now configurable (Settings → ollama endpoint, default

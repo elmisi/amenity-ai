@@ -26,6 +26,9 @@ amenity-ai --source /path/to/folder --archive /path/to/archive
 # Generate performance report from cache
 amenity-ai report --source /path/to/folder
 
+# Check providers and models (exit code != 0 when a check fails)
+amenity-ai doctor
+
 # Development: refresh local install after changes (updates the system-wide command)
 ~/.local/share/amenity-stuff/venv/bin/pip install -e .
 
@@ -56,21 +59,56 @@ User approval → Move to archive/{category}/{year}/
 `ScanItem` (frozen dataclass in `scanner.py`) is the single source of truth per file; the table is a view of it. `status` drives everything: `pending → scanned → classified → moved`, plus `skipped`/`error`. Transient statuses (`scanning`, `classifying`, `moving`) are never restored from cache — `cache_overlay.py` maps them (and legacy status names) back to stable ones when overlaying cached results onto a fresh scan.
 
 ### Two Configuration Dataclasses
-- `config.py` → `AppConfig`: persisted at `~/.config/amenity-stuff/config.json` via `load_config()`/`save_config()`; `load_config()` migrates legacy keys (e.g. old `text_model`, `taxonomy_lines`)
+- `config.py` → `AppConfig`: persisted at `~/.config/amenity-stuff/config.json` via `load_config()`/`save_config()`; `load_config()` migrates legacy keys (old `text_model`, `taxonomy_lines`, the flat `ollama_base_url`/`ds4_base_url` pair, and bare model ids via `migrate_model_id()`)
 - `settings.py` → `Settings`: frozen runtime settings, assembled in `__main__.py` from CLI args + `AppConfig`
+- Both carry `providers: dict[str, str]` — one URL per registry entry, normalized in `__post_init__` so unknown keys are dropped and missing ones fall back to the registry default. An empty URL means "provider disabled"; endpoints are user-local and must never be hardcoded in the repo
 
 Adding a user-facing setting means touching both dataclasses, `__main__.py` wiring, and `settings_screen.py`.
 
+### Provider Registry
+`providers.py` is the single source of truth. A `ProviderSpec` carries `name`, `kind`
+(`ollama` | `openai_compat`), `prefix`, `default_url`, `sends_reasoning_effort`,
+`supports_install`. **Declaration order is the priority**: `vllm > ollama > ds4` — vLLM
+batches concurrent requests, Ollama is always available, ds4 is mutually exclusive so a
+long scan would monopolize it.
+
+Every model id carries its provider prefix (`ollama:`, `vllm:`, `ds4:`) through candidates,
+config, cache `model_used`, and the UI. `split_model_id()` matches against known prefixes
+rather than splitting on the first `:`, so `ollama:qwen3:8b` resolves correctly and a bare
+`qwen3:8b` (written by a config older than 0.12.0) means Ollama.
+
+Adding a provider means one entry in `PROVIDERS`; discovery, ranking, routing, settings and
+the doctor all iterate the registry.
+
 ### Model Selection ("auto")
-- `discovery.py` probes both providers over HTTP at startup (Ollama `GET /api/tags`,
-  ds4 `GET /v1/models`); both endpoints are configurable and may be remote.
-  `model_selection.py` merges their models into text/vision candidate lists
-- `task_builders.build_analysis_config()` orders candidates: facts extraction prefers small/fast models (e.g. `gemma3:1b`, `qwen2.5:3b-instruct`); classify has its own preference order in `app.py`; a vision fallback model is appended per settings
-- Analysis tries candidates in order until one succeeds. LLM calls pin `temperature=0`, JSON response format, `keep_alive="5m"`, and capped `num_predict` (constants in `analyzer.py`); content is excerpted head+tail to ~10k chars before prompting
-- A second provider ("ds4", any OpenAI-compatible server) is routed by model-id prefix:
-  `ds4:<model>` goes through `llm_router.py` → `openai_client.Ds4Backend`; everything else
-  goes to Ollama. The endpoint lives in `Settings.ds4_base_url` (empty = disabled) and is
-  a user-local setting — never hardcode an endpoint in the repo. ds4 is text-only.
+- `discovery.py` queries every configured provider in parallel, one request each (Ollama
+  `GET /api/tags`, OpenAI-compatible `GET /v1/models`), and returns `ModelInfo` with
+  capabilities, parameter size and context length. Ollama ≥ 0.31 declares capabilities in
+  `/api/tags`, so no per-model request is needed
+- Capabilities come from three tiers of decreasing trust: `declared` (from the provider) >
+  `probed` (a live 1×1 PNG request, only inside the doctor, persisted in `probe_cache.py`) >
+  `heuristic` (name patterns in `capabilities.py`). The heuristic has real false negatives:
+  a multimodal model served over the OpenAI API need not say so in its name
+- `model_selection.rank_models(models, role)` orders candidates for `facts`, `classify` and
+  `vision` by four criteria: provider priority → size bucket (`facts`/`vision` ascending,
+  `classify` closest to the 5–9B band) → position in `CURATED_BIAS` → id. `CURATED_BIAS`
+  only breaks ties inside a bucket and is maintained by hand
+- `task_builders.build_analysis_config()` applies the pinned model, if any, on top of the
+  ranking without dropping the others; analysis tries candidates in order until one succeeds
+- LLM calls pin `temperature=0`, JSON response format, `keep_alive="5m"`, and capped
+  `num_predict` (constants in `analyzer.py`); content is excerpted head+tail to ~10k chars
+- `llm_router.generate(..., provider_urls=...)` resolves the prefix to a backend:
+  `ollama_client.OllamaBackend` or `openai_client.OpenAICompatBackend`. An unconfigured
+  provider fails explicitly rather than falling back. Vision goes through the router too,
+  so a multimodal model on vLLM is usable
+
+### Doctor
+`doctor.py` is pure: it takes a `DiscoveryResult` and returns a `DoctorReport` of `Check`s —
+one per provider plus one per semantic role. The probe is injected as a callable, so tests
+never touch the network and the UI decides whether to pay its cost. A `Remedy` is data, not
+a string: `kind="pull"` only when a provider with `supports_install=True` is reachable,
+otherwise it degrades to `kind="hint"`. Two surfaces, one logic: `amenity-ai doctor` and
+`[d]` in the TUI. The doctor never opens by itself.
 
 ### Caches
 - Source cache: `<source>/.amenity-stuff/cache.json`, keyed by `(path, size, mtime)`; checked before reusing results
@@ -87,7 +125,11 @@ Adding a user-facing setting means touching both dataclasses, `__main__.py` wiri
 - **archiver/analyzer.py**: LLM facts/classification pipeline (`AnalysisConfig`, prompt calls, JSON repair)
 - **archiver/extractors/**: File format handlers — `../filetypes.py` maps extension → kind, `registry.py` dispatches kind → extractor
 - **archiver/prompts.py**: All LLM prompt templates (facts, classification)
-- **archiver/llm_backend.py** / **ollama_client.py**: `LLMBackend` protocol abstraction / Ollama HTTP wrapper
+- **archiver/providers.py**: Provider registry — names, prefixes, priority, per-provider quirks
+- **archiver/capabilities.py** / **probe_cache.py**: Capability detection and size parsing / persistence of conclusive probe results
+- **archiver/discovery.py** / **model_selection.py**: Parallel model discovery / role-based ranking
+- **archiver/llm_backend.py** / **ollama_client.py** / **openai_client.py**: `LLMBackend` protocol abstraction / Ollama HTTP wrapper / shared OpenAI-compatible backend (vLLM and ds4)
+- **archiver/doctor.py** + **model_catalog.py** + **ollama_admin.py**: Diagnosis logic / curated installable models / model pull and vision probe
 - **archiver/normalizer.py**: Normalization of LLM responses
 - **archiver/taxonomy.py** + **archiver/taxonomies/**: Taxonomy parsing + bundled defaults (en/it); user overrides in `~/.config/amenity-stuff/taxonomies/{lang}.txt`
 - **archiver/archive_apply.py**: Move-to-archive logic
