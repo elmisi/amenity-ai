@@ -33,6 +33,7 @@ from .task_builders import build_analysis_config, _with_pin
 from .ui_details import render_details
 from .task_state import TaskState
 from .help_screen import HelpScreen
+from .doctor_screen import DoctorScreen
 from .ui_runtime import banner_for_state, count_statuses, derive_task_state, provider_problem
 from .item_mutations import mark_item_classifying, mark_item_scanning, reset_item_to_pending, unclassify_item
 from .open_file import open_with_default_app
@@ -329,6 +330,18 @@ class ArchiverApp(App):
                 provider_info=provider_info,
             ),
             callback=self._on_settings_done,
+            wait_for_dismiss=False,
+        )
+
+    async def action_doctor(self) -> None:
+        if self._analysis_task.running or self._archive_task.running or self._scan_task.running:
+            return
+        self.push_screen(
+            DoctorScreen(
+                settings=self.settings,
+                discovery=self._discovery,
+                on_refresh=lambda: self.run_worker(self._run_discovery()),
+            ),
             wait_for_dismiss=False,
         )
 
