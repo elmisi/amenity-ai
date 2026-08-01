@@ -32,7 +32,7 @@ def test_discover_ds4_server_down(monkeypatch):
 def test_discover_providers_skips_ds4_when_url_empty(monkeypatch):
     monkeypatch.setattr(
         discovery, "_discover_ollama",
-        lambda: ProviderInfo(name="ollama", available=True, details="OK", models=("gemma3:1b",)),
+        lambda base_url: ProviderInfo(name="ollama", available=True, details="OK", models=("gemma3:1b",)),
     )
 
     def boom(base_url):
@@ -46,7 +46,7 @@ def test_discover_providers_skips_ds4_when_url_empty(monkeypatch):
 def test_discover_providers_includes_ds4(monkeypatch):
     monkeypatch.setattr(
         discovery, "_discover_ollama",
-        lambda: ProviderInfo(name="ollama", available=True, details="OK", models=("gemma3:1b",)),
+        lambda base_url: ProviderInfo(name="ollama", available=True, details="OK", models=("gemma3:1b",)),
     )
     monkeypatch.setattr(
         discovery, "_discover_ds4",

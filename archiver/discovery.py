@@ -4,10 +4,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 import json
-import os
-from pathlib import Path
-import shutil
-import subprocess
 from urllib.request import urlopen
 
 
@@ -17,7 +13,6 @@ class ProviderInfo:
     available: bool
     details: str
     models: tuple[str, ...] = ()
-    command: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -26,16 +21,6 @@ class DiscoveryResult:
     chosen_text: Optional[str] = None
     chosen_vision: Optional[str] = None
     notes: tuple[str, ...] = ()
-
-
-def _run(cmd: list[str], timeout_s: float = 2.5) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        text=True,
-        capture_output=True,
-        timeout=timeout_s,
-        check=False,
-    )
 
 
 def _get_json(url: str, *, timeout_s: float) -> dict:
@@ -64,40 +49,33 @@ def _discover_ds4(base_url: str) -> ProviderInfo:
     return ProviderInfo(name="ds4", available=True, details=details, models=tuple(models))
 
 
-def _discover_ollama() -> ProviderInfo:
-    path = shutil.which("ollama")
-    if not path:
-        return ProviderInfo(name="ollama", available=False, details="Not found in PATH")
+def _discover_ollama(base_url: str) -> ProviderInfo:
+    url = base_url.rstrip("/") + "/api/tags"
+    try:
+        data = _get_json(url, timeout_s=2.5)
+    except Exception as exc:
+        return ProviderInfo(name="ollama", available=False, details=f"Not reachable ({type(exc).__name__})")
 
-    proc = _run(["ollama", "list"], timeout_s=3.5)
-    if proc.returncode != 0:
-        details = proc.stderr.strip() or "Comando presente ma non risponde"
-        return ProviderInfo(name="ollama", available=False, details=details, command=path)
-
-    lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     models: list[str] = []
-    for ln in lines[1:]:
-        model = ln.split()[0].strip()
-        if model:
-            models.append(model)
+    entries = data.get("models") if isinstance(data, dict) else None
+    for entry in entries or []:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if isinstance(name, str) and name.strip():
+            models.append(name.strip())
 
-    details = "OK"
-    if not models:
-        details = "OK (no models listed)"
+    details = "OK" if models else "OK (no models listed)"
+    return ProviderInfo(name="ollama", available=True, details=details, models=tuple(models))
 
-    return ProviderInfo(
-        name="ollama",
-        available=True,
-        details=details,
-        models=tuple(models),
-        command=path,
-    )
 
-def discover_providers(*, ds4_base_url: str = "") -> DiscoveryResult:
+def discover_providers(
+    *,
+    ollama_base_url: str = "http://localhost:11434",
+    ds4_base_url: str = "",
+) -> DiscoveryResult:
     providers: list[ProviderInfo] = []
     notes: list[str] = []
 
-    ollama = _discover_ollama()
+    ollama = _discover_ollama(ollama_base_url.strip() or "http://localhost:11434")
     providers.append(ollama)
 
     ds4 = None
@@ -112,7 +90,7 @@ def discover_providers(*, ds4_base_url: str = "") -> DiscoveryResult:
     elif ollama.available and ollama.models:
         chosen_text = "ollama"
     elif ollama.available and not ollama.models:
-        notes.append("Ollama is installed but has no models: run 'ollama pull <model>'.")
+        notes.append("Ollama has no models: run 'ollama pull <model>'.")
 
     return DiscoveryResult(
         providers=tuple(providers),
