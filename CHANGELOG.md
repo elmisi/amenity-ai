@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.1] - 2026-08-01
+
+- Update dependency ranges to current major versions: textual 8.x (from 0.6x),
+  pypdf 6.x, PyMuPDF 1.28, Pillow 12.x. No code changes required; verified
+  with the full test suite and an interactive TUI pass (scan, settings, quit).
+
 ## [0.10.0] - 2026-08-01
 
 - Add support for a second local LLM provider: any OpenAI-compatible
