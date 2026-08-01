@@ -208,9 +208,12 @@ def _extract_json(text: str) -> Optional[dict]:
 
 _MAX_LLM_RAW_OUTPUT_CHARS = 12000
 _JSON_RESPONSE_FORMAT = "json"
-_JSON_REPAIR_OPTIONS = {"temperature": 0, "num_predict": 220}
-_FACTS_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 400}
-_CLASSIFY_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 320}
+# num_predict is a ceiling, not a target: models that finish earlier cost nothing
+# extra. These are sized so a mid-size model (7-8B) can emit a complete JSON object;
+# the previous values were tuned for 1B models and truncated everything larger.
+_JSON_REPAIR_OPTIONS = {"temperature": 0, "num_predict": 1500}
+_FACTS_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 2000}
+_CLASSIFY_GENERATE_OPTIONS = {"temperature": 0, "num_predict": 1200}
 
 
 def _truncate_raw_output(text: str) -> str:
