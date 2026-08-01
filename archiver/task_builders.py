@@ -56,4 +56,5 @@ def build_analysis_config(*, settings: "Settings", discovery: "DiscoveryResult |
         filename_separator=settings.filename_separator,
         ocr_mode=settings.ocr_mode,
         ds4_base_url=settings.ds4_base_url,
+        ollama_base_url=settings.ollama_base_url,
     )

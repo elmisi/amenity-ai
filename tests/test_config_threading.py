@@ -51,3 +51,46 @@ def test_build_analysis_config_threads_ds4_and_prefers_flash():
     cfg = build_analysis_config(settings=settings, discovery=discovery, taxonomy=_TAXONOMY)
     assert cfg.ds4_base_url == "http://localhost:8000"
     assert cfg.text_models[0] == "ds4:deepseek-v4-flash"
+
+
+def test_config_roundtrip_ollama_base_url(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    save_config(AppConfig(ollama_base_url="http://ollama-box:11434"))
+    written = json.loads((tmp_path / "amenity-stuff" / "config.json").read_text())
+    assert written["ollama_base_url"] == "http://ollama-box:11434"
+    assert load_config().ollama_base_url == "http://ollama-box:11434"
+
+
+def test_config_ollama_default_is_localhost(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert load_config().ollama_base_url == "http://localhost:11434"
+
+
+def test_config_ollama_blank_falls_back_to_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfg_dir = tmp_path / "amenity-stuff"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.json").write_text(json.dumps({"ollama_base_url": "   "}))
+    assert load_config().ollama_base_url == "http://localhost:11434"
+
+
+def test_app_config_from_settings_carries_ollama_url():
+    settings = Settings(
+        source_root=Path("."),
+        archive_root=Path("./ARCHIVE"),
+        ollama_base_url="http://ollama-box:11434",
+    )
+    assert app_config_from_settings(settings).ollama_base_url == "http://ollama-box:11434"
+
+
+def test_build_analysis_config_threads_ollama_url():
+    settings = Settings(
+        source_root=Path("."),
+        archive_root=Path("./ARCHIVE"),
+        ollama_base_url="http://ollama-box:11434",
+    )
+    discovery = DiscoveryResult(
+        providers=(ProviderInfo(name="ollama", available=True, details="OK", models=("gemma3:1b",)),)
+    )
+    cfg = build_analysis_config(settings=settings, discovery=discovery, taxonomy=_TAXONOMY)
+    assert cfg.ollama_base_url == "http://ollama-box:11434"

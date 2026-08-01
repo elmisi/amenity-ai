@@ -397,7 +397,10 @@ class ArchiverApp(App):
         notes_widget.update("Detecting local providers…")
 
         def do_discover() -> DiscoveryResult:
-            return discover_providers(ds4_base_url=self.settings.ds4_base_url)
+            return discover_providers(
+                ollama_base_url=self.settings.ollama_base_url,
+                ds4_base_url=self.settings.ds4_base_url,
+            )
 
         worker = self.run_worker(do_discover, thread=True)
         self._discovery = await worker.wait()
@@ -599,7 +602,7 @@ class ArchiverApp(App):
                 res = normalize_items_with_fallback(
                     items=targets,
                     models=text_models,
-                    base_url="http://localhost:11434",
+                    base_url=self.settings.ollama_base_url,
                     ds4_base_url=self.settings.ds4_base_url,
                     taxonomy=taxonomy,
                     output_language=self.settings.output_language,
@@ -932,7 +935,7 @@ class ArchiverApp(App):
             res = normalize_items_with_fallback(
                 items=[it],
                 models=text_models,
-                base_url="http://localhost:11434",
+                base_url=self.settings.ollama_base_url,
                 ds4_base_url=self.settings.ds4_base_url,
                 taxonomy=taxonomy,
                 output_language=self.settings.output_language,

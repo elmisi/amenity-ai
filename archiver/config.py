@@ -21,6 +21,7 @@ class AppConfig:
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
     ds4_base_url: str = ""  # OpenAI-compatible endpoint; empty = disabled
+    ollama_base_url: str = "http://localhost:11434"  # may point at another machine
 
     def __post_init__(self) -> None:
         # Ensure taxonomies is always a dict
@@ -67,6 +68,7 @@ def load_config() -> AppConfig:
     ocr_mode = data.get("ocr_mode")
     undated_folder_name = data.get("undated_folder_name")
     ds4_base_url = data.get("ds4_base_url")
+    ollama_base_url = data.get("ollama_base_url")
 
     kwargs: dict[str, object] = {}
     if isinstance(last_archive, str) and last_archive.strip():
@@ -123,6 +125,8 @@ def load_config() -> AppConfig:
             kwargs["undated_folder_name"] = val
     if isinstance(ds4_base_url, str) and ds4_base_url.strip():
         kwargs["ds4_base_url"] = ds4_base_url.strip()
+    if isinstance(ollama_base_url, str) and ollama_base_url.strip():
+        kwargs["ollama_base_url"] = ollama_base_url.strip()
     return AppConfig(**kwargs)  # type: ignore[arg-type]
 
 
