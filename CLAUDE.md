@@ -37,7 +37,9 @@ curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/install.sh | 
 curl -sSL https://raw.githubusercontent.com/elmisi/amenity-ai/main/uninstall.sh | sh
 ```
 
-**No test suite currently exists.** There is no Makefile, pytest, or linting configuration.
+A pytest suite exists in `tests/` (unit tests for the LLM routing/config layers). Run it with
+`~/.local/share/amenity-stuff/venv/bin/python -m pytest tests/ -v` (pytest is dev-only,
+deliberately not in `pyproject.toml`). There is still no Makefile or linting configuration.
 
 ## Architecture
 
@@ -63,6 +65,10 @@ Adding a user-facing setting means touching both dataclasses, `__main__.py` wiri
 - `discovery.py` detects Ollama at startup; `model_selection.py` lists installed models and builds text/vision candidate lists
 - `task_builders.build_analysis_config()` orders candidates: facts extraction prefers small/fast models (e.g. `gemma3:1b`, `qwen2.5:3b-instruct`); classify has its own preference order in `app.py`; a vision fallback model is appended per settings
 - Analysis tries candidates in order until one succeeds. LLM calls pin `temperature=0`, JSON response format, `keep_alive="5m"`, and capped `num_predict` (constants in `analyzer.py`); content is excerpted head+tail to ~10k chars before prompting
+- A second provider ("ds4", any OpenAI-compatible server) is routed by model-id prefix:
+  `ds4:<model>` goes through `llm_router.py` → `openai_client.Ds4Backend`; everything else
+  goes to Ollama. The endpoint lives in `Settings.ds4_base_url` (empty = disabled) and is
+  a user-local setting — never hardcode an endpoint in the repo. ds4 is text-only.
 
 ### Caches
 - Source cache: `<source>/.amenity-stuff/cache.json`, keyed by `(path, size, mtime)`; checked before reusing results

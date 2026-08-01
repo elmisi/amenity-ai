@@ -48,15 +48,17 @@ def status_cell(status: str) -> Text:
 def provider_summary(discovery: "DiscoveryResult | None", settings: "Settings", *, model_picker) -> str:
     if not discovery:
         return ""
-    provider = None
+    names: list[str] = []
     models: tuple[str, ...] = ()
     for p in discovery.providers:
-        if p.name == "ollama":
-            provider = "ollama" if p.available else "ollama(missing)"
-            models = p.models
-            break
-    if not provider:
+        if p.available:
+            names.append(p.name)
+            models = models + p.models
+        elif p.name == "ollama":
+            names.append("ollama(missing)")
+    if not names:
         return ""
+    provider = "+".join(names)
 
     text_models, vision_models = model_picker(discovery)
     facts = settings.facts_model if settings.facts_model and settings.facts_model != "auto" else (text_models[0] if text_models else "auto")

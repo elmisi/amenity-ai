@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from .ollama_client import generate
+from .llm_router import generate
 from .scanner import ScanItem
 from .taxonomy import Taxonomy, taxonomy_to_prompt_block
 from .utils_filename import (
@@ -280,6 +280,7 @@ def normalize_items(
     filename_separator: str,
     chunk_size: int = 25,
     should_cancel: Optional[Callable[[], bool]] = None,
+    ds4_base_url: str = "",
 ) -> NormalizationResult:
     allowed = taxonomy.allowed_names
     taxonomy_block = taxonomy_to_prompt_block(taxonomy)
@@ -312,6 +313,7 @@ def normalize_items(
                     filename_separator=filename_separator,
                     chunk_size=1,
                     should_cancel=should_cancel,
+                    ds4_base_url=ds4_base_url,
                 )
                 if single_result.error:
                     return NormalizationResult(by_path={**by_path, **fallback_by_path}, model_used=model, error=error_reason)
@@ -422,6 +424,7 @@ def normalize_items(
             model=model,
             prompt=prompt,
             base_url=base_url,
+            ds4_base_url=ds4_base_url,
             timeout_s=180.0,
             response_format=_NORMALIZE_RESPONSE_SCHEMA,
             think=False,
@@ -471,3 +474,32 @@ def normalize_items(
             apply_row(fallback_row, path=only_path)
 
     return NormalizationResult(by_path=by_path, model_used=model)
+
+
+def normalize_items_with_fallback(
+    *,
+    items: list[ScanItem],
+    models: tuple[str, ...],
+    base_url: str,
+    taxonomy: Taxonomy,
+    output_language: str,
+    filename_separator: str,
+    chunk_size: int = 25,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    ds4_base_url: str = "",
+) -> NormalizationResult:
+    """Try each model in order; return the first result without an infra error.
+
+    Cancellation is never retried. If every model errors, return the last result.
+    """
+    last: Optional[NormalizationResult] = None
+    for model in models or ("",):
+        result = normalize_items(
+            items=items, model=model, base_url=base_url, taxonomy=taxonomy,
+            output_language=output_language, filename_separator=filename_separator,
+            chunk_size=chunk_size, should_cancel=should_cancel, ds4_base_url=ds4_base_url,
+        )
+        last = result
+        if result.error is None or result.error == "Cancelled" or (should_cancel and should_cancel()):
+            return result
+    return last  # type: ignore[return-value]

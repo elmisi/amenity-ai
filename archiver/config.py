@@ -20,6 +20,7 @@ class AppConfig:
     filename_separator: str = "space"  # space | underscore | dash
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
+    ds4_base_url: str = ""  # OpenAI-compatible endpoint; empty = disabled
 
     def __post_init__(self) -> None:
         # Ensure taxonomies is always a dict
@@ -65,6 +66,7 @@ def load_config() -> AppConfig:
     filename_separator = data.get("filename_separator")
     ocr_mode = data.get("ocr_mode")
     undated_folder_name = data.get("undated_folder_name")
+    ds4_base_url = data.get("ds4_base_url")
 
     kwargs: dict[str, object] = {}
     if isinstance(last_archive, str) and last_archive.strip():
@@ -119,6 +121,8 @@ def load_config() -> AppConfig:
         val = undated_folder_name.strip()
         if val:
             kwargs["undated_folder_name"] = val
+    if isinstance(ds4_base_url, str) and ds4_base_url.strip():
+        kwargs["ds4_base_url"] = ds4_base_url.strip()
     return AppConfig(**kwargs)  # type: ignore[arg-type]
 
 

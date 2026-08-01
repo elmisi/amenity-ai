@@ -3,11 +3,18 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from .llm_router import DS4_PREFIX
+
 if TYPE_CHECKING:  # pragma: no cover
     from .discovery import DiscoveryResult
 
 
-_TEXT_PREFER = (
+_DS4_TEXT_PREFER = (
+    "ds4:deepseek-v4-flash",
+    "ds4:deepseek-v4-pro",
+)
+
+_TEXT_PREFER = _DS4_TEXT_PREFER + (
     "gemma3:1b",
     "qwen2.5:3b-instruct",
     "phi4-mini:latest",
@@ -59,9 +66,8 @@ def pick_model_candidates(discovery: "DiscoveryResult | None") -> tuple[tuple[st
     models: list[str] = []
     if discovery:
         for p in discovery.providers:
-            if p.name == "ollama" and p.available and p.models:
-                models = list(p.models)
-                break
+            if p.name in ("ollama", "ds4") and p.available and p.models:
+                models.extend(p.models)
 
     if not models:
         return (), ()
@@ -71,7 +77,7 @@ def pick_model_candidates(discovery: "DiscoveryResult | None") -> tuple[tuple[st
         for model in models
         if _is_text_candidate(model) and not (_is_vision_model(model) and not model.lower().startswith(("gemma3:", "ministral-3:")))
     ]
-    vision_candidates = [model for model in models if _is_vision_model(model)]
+    vision_candidates = [model for model in models if _is_vision_model(model) and not model.startswith(DS4_PREFIX)]
 
     # Keep newer generic names such as `qwen3:4b` and `phi4-mini:latest` eligible even
     # when they don't advertise themselves with `-instruct` or `-chat`.

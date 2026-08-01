@@ -85,6 +85,7 @@ def main() -> None:
         filename_separator=cfg.filename_separator,
         ocr_mode=cfg.ocr_mode,
         undated_folder_name=cfg.undated_folder_name,
+        ds4_base_url=cfg.ds4_base_url,
         skip_initial_setup=skip_setup,
     )
     # Disable mouse tracking so the terminal can do native text selection (copy with mouse).

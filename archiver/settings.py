@@ -43,6 +43,7 @@ class Settings:
     filename_separator: str = "space"  # space | underscore | dash
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
+    ds4_base_url: str = ""  # OpenAI-compatible endpoint; empty = disabled
     skip_initial_setup: bool = False
 
     def __post_init__(self) -> None:
