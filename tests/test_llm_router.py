@@ -1,103 +1,95 @@
 from __future__ import annotations
 
+import base64
+
 from archiver import llm_router
 from archiver.llm_backend import LLMResponse
-from archiver.ollama_client import OllamaGenerateResult
+
+URLS = {
+    "ollama": "http://ollama.invalid:11434",
+    "vllm": "http://vllm.invalid:8000",
+    "ds4": "",
+}
 
 
-def test_prefix_constant_and_predicate():
-    assert llm_router.DS4_PREFIX == "ds4:"
-    assert llm_router.is_ds4_model("ds4:deepseek-v4-flash")
-    assert not llm_router.is_ds4_model("gemma3:1b")
+class _Spy:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def __call__(self, base_url, spec=None):
+        self.calls.append({"base_url": base_url, "spec": spec})
+        return self
+
+    def generate(self, **kwargs):
+        self.calls[-1].update(kwargs)
+        return self.response
 
 
-def test_ds4_model_routes_to_ds4_backend(monkeypatch):
-    captured = {}
+def test_bare_legacy_id_routes_to_ollama(monkeypatch):
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OllamaBackend", spy)
 
-    class FakeBackend:
-        def __init__(self, base_url):
-            captured["base_url"] = base_url
+    result = llm_router.generate(model="qwen3:8b", prompt="hi", provider_urls=URLS)
 
-        def generate(self, **kwargs):
-            captured["kwargs"] = kwargs
-            return LLMResponse(text="hi", model="deepseek-v4-flash")
+    assert result.response == "ok"
+    assert spy.calls[0]["base_url"] == URLS["ollama"]
+    assert spy.calls[0]["model"] == "qwen3:8b"
 
-    monkeypatch.setattr(llm_router, "Ds4Backend", FakeBackend)
 
-    def boom(**kwargs):
-        raise AssertionError("ollama must not be called for ds4 models")
+def test_prefixed_ollama_id_strips_the_prefix_before_the_call(monkeypatch):
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OllamaBackend", spy)
 
-    monkeypatch.setattr(llm_router, "_ollama_generate", boom)
+    llm_router.generate(model="ollama:qwen3:8b", prompt="hi", provider_urls=URLS)
 
-    res = llm_router.generate(
-        model="ds4:deepseek-v4-flash",
-        prompt="q",
-        ds4_base_url="http://localhost:8000",
-        think=False,
-        options={"temperature": 0},
+    assert spy.calls[0]["model"] == "qwen3:8b"
+
+
+def test_vllm_id_routes_to_the_openai_backend_with_its_spec(monkeypatch):
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OpenAICompatBackend", spy)
+
+    result = llm_router.generate(
+        model="vllm:qwen3.6-27b", prompt="hi", provider_urls=URLS
     )
-    assert isinstance(res, OllamaGenerateResult)
-    assert res.error is None
-    assert res.response == "hi"
-    assert res.model == "ds4:deepseek-v4-flash"  # keeps the prefixed id for cache/UI
-    assert captured["base_url"] == "http://localhost:8000"
-    assert captured["kwargs"]["model"] == "deepseek-v4-flash"  # prefix stripped
+
+    assert result.response == "ok"
+    assert spy.calls[0]["base_url"] == URLS["vllm"]
+    assert spy.calls[0]["spec"].name == "vllm"
+    assert spy.calls[0]["model"] == "qwen3.6-27b"
 
 
-def test_plain_model_routes_to_ollama(monkeypatch):
-    captured = {}
+def test_unconfigured_provider_fails_explicitly_instead_of_falling_back():
+    result = llm_router.generate(model="ds4:whatever", prompt="hi", provider_urls=URLS)
+    assert result.done is False
+    assert "ds4" in (result.error or "")
+    assert "configurat" in (result.error or "")
 
-    def fake_ollama(**kwargs):
-        captured.update(kwargs)
-        return OllamaGenerateResult(response="ok", model="gemma3:1b", done=True)
 
-    monkeypatch.setattr(llm_router, "_ollama_generate", fake_ollama)
-    res = llm_router.generate(
-        model="gemma3:1b",
-        prompt="q",
-        base_url="http://localhost:11434",
-        ds4_base_url="http://localhost:8000",
+def test_image_file_goes_to_ollama_as_base64(monkeypatch, tmp_path):
+    png = tmp_path / "a.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\nrest")
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OllamaBackend", spy)
+
+    llm_router.generate_with_image_file(
+        model="ollama:llava:7b", prompt="what", image_path=str(png), provider_urls=URLS
     )
-    assert res.response == "ok"
-    assert captured["model"] == "gemma3:1b"
-    assert "ds4_base_url" not in captured  # ollama API unchanged
+
+    sent = spy.calls[0]["images_b64"][0]
+    assert base64.b64decode(sent).startswith(b"\x89PNG")
 
 
-def test_ds4_without_endpoint_is_error(monkeypatch):
-    def boom(**kwargs):
-        raise AssertionError("no backend must be called")
+def test_image_file_now_works_on_openai_compat_providers(monkeypatch, tmp_path):
+    png = tmp_path / "a.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\nrest")
+    spy = _Spy(LLMResponse(text="ok"))
+    monkeypatch.setattr(llm_router, "OpenAICompatBackend", spy)
 
-    monkeypatch.setattr(llm_router, "_ollama_generate", boom)
-    res = llm_router.generate(model="ds4:deepseek-v4-flash", prompt="q", ds4_base_url="")
-    assert res.error
-    assert "not configured" in res.error
-
-
-def test_image_file_on_ds4_is_error(tmp_path):
-    img = tmp_path / "x.png"
-    img.write_bytes(b"fake")
-    res = llm_router.generate_with_image_file(
-        model="ds4:deepseek-v4-flash",
-        prompt="q",
-        image_path=str(img),
-        ds4_base_url="http://localhost:8000",
+    result = llm_router.generate_with_image_file(
+        model="vllm:qwen3.6-27b", prompt="what", image_path=str(png), provider_urls=URLS
     )
-    assert res.error
-    assert "vision" in res.error
 
-
-def test_image_file_on_ollama_delegates(monkeypatch, tmp_path):
-    captured = {}
-
-    def fake(**kwargs):
-        captured.update(kwargs)
-        return OllamaGenerateResult(response="desc", model="moondream:latest", done=True)
-
-    monkeypatch.setattr(llm_router, "_ollama_generate_with_image_file", fake)
-    img = tmp_path / "x.png"
-    img.write_bytes(b"fake")
-    res = llm_router.generate_with_image_file(
-        model="moondream:latest", prompt="q", image_path=str(img), ds4_base_url="http://localhost:8000"
-    )
-    assert res.response == "desc"
-    assert captured["model"] == "moondream:latest"
+    assert result.done is True
+    assert spy.calls[0]["images_b64"]

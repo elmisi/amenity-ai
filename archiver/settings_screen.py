@@ -9,7 +9,9 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, Static, TextArea
 
 from .archive_picker_screen import ArchivePickerResult, ArchivePickerScreen
-from .llm_router import DS4_PREFIX
+from .providers import provider_by_name
+
+DS4_PREFIX = provider_by_name("ds4").prefix
 from .taxonomy import (
     get_default_taxonomy_for_language,
     get_effective_language,

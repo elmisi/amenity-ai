@@ -1,138 +1,171 @@
 from __future__ import annotations
 
-import pytest
+import base64
 
 from archiver import openai_client
-from archiver.openai_client import Ds4Backend
+from archiver.openai_client import MAX_TOKENS, OpenAICompatBackend, mime_from_b64
+from archiver.providers import provider_by_name
+
+PNG_1X1 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA"
+    "60e6kgAAAABJRU5ErkJggg=="
+)
 
 
-def _ok_response(content: str = '{"ok": true}') -> dict:
-    return {
-        "id": "chatcmpl-1",
-        "model": "deepseek-v4-flash",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": content,
-                    "reasoning_content": "secret chain of thought",
-                },
-                "finish_reason": "stop",
-            }
-        ],
-    }
-
-
-def test_generate_builds_openai_payload(monkeypatch):
+def _capture(monkeypatch, response):
     captured = {}
 
     def fake_post(url, payload, *, timeout_s):
         captured["url"] = url
         captured["payload"] = payload
         captured["timeout_s"] = timeout_s
-        return _ok_response()
+        return response
 
     monkeypatch.setattr(openai_client, "_post_json", fake_post)
-    backend = Ds4Backend("http://localhost:8000/")
-    resp = backend.generate(
-        prompt="hello",
-        model="deepseek-v4-flash",
+    return captured
+
+
+def _ok(text="hello"):
+    return {
+        "model": "m",
+        "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+    }
+
+
+def test_mime_is_sniffed_from_magic_bytes():
+    assert mime_from_b64(PNG_1X1) == "image/png"
+    jpeg = base64.b64encode(b"\xff\xd8\xff\xe0somejunk").decode("ascii")
+    assert mime_from_b64(jpeg) == "image/jpeg"
+    assert mime_from_b64("!!!not base64!!!") == "image/png"
+
+
+def test_images_are_sent_as_openai_image_url_parts(monkeypatch):
+    captured = _capture(monkeypatch, _ok())
+    backend = OpenAICompatBackend("http://vllm.invalid:8000", provider_by_name("vllm"))
+
+    result = backend.generate(prompt="describe", model="qwen3.6-27b", images_b64=[PNG_1X1])
+
+    assert result.success
+    content = captured["payload"]["messages"][0]["content"]
+    assert isinstance(content, list)
+    assert content[0] == {"type": "text", "text": "describe"}
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_text_only_prompt_stays_a_plain_string(monkeypatch):
+    captured = _capture(monkeypatch, _ok())
+    backend = OpenAICompatBackend("http://vllm.invalid:8000", provider_by_name("vllm"))
+
+    backend.generate(prompt="hi", model="m")
+
+    assert captured["payload"]["messages"][0]["content"] == "hi"
+
+
+def test_reasoning_effort_is_sent_only_for_ds4(monkeypatch):
+    captured = _capture(monkeypatch, _ok())
+    OpenAICompatBackend("http://ds4.invalid", provider_by_name("ds4")).generate(
+        prompt="hi", model="deepseek-v4-flash", think=False
+    )
+    assert captured["payload"]["reasoning_effort"] == "low"
+
+    captured = _capture(monkeypatch, _ok())
+    OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm")).generate(
+        prompt="hi", model="qwen3.6-27b", think=False
+    )
+    assert "reasoning_effort" not in captured["payload"]
+
+
+def test_max_tokens_is_capped_by_declared_context_length(monkeypatch):
+    captured = _capture(monkeypatch, _ok())
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+
+    backend.generate(prompt="hi", model="m", max_model_len=2048)
+
+    assert captured["payload"]["max_tokens"] == 2048
+
+    captured = _capture(monkeypatch, _ok())
+    backend.generate(prompt="hi", model="m", max_model_len=131072)
+    assert captured["payload"]["max_tokens"] == MAX_TOKENS
+
+
+def test_ollama_only_arguments_never_reach_the_wire(monkeypatch):
+    captured = _capture(monkeypatch, _ok())
+    backend = OpenAICompatBackend("http://vllm.invalid:8000/", provider_by_name("vllm"))
+
+    backend.generate(
+        prompt="hi",
+        model="m",
         timeout_s=180.0,
         response_format="json",
-        think=False,
         keep_alive="5m",
         options={"temperature": 0, "num_predict": 400},
     )
 
-    assert resp.success
-    assert resp.text == '{"ok": true}'
-    assert captured["url"] == "http://localhost:8000/v1/chat/completions"
-    p = captured["payload"]
-    assert p["model"] == "deepseek-v4-flash"
-    assert p["messages"] == [{"role": "user", "content": "hello"}]
-    assert p["max_tokens"] == 8000          # num_predict ignored, fixed budget
-    assert p["reasoning_effort"] == "low"   # think=False mapping
-    assert p["temperature"] == 0
-    assert "response_format" not in p       # server ignores it; not sent
-    assert "keep_alive" not in p            # Ollama-specific; not sent
-    assert "num_predict" not in p
+    payload = captured["payload"]
+    assert captured["url"] == "http://vllm.invalid:8000/v1/chat/completions"
     assert captured["timeout_s"] == 180.0
+    assert payload["temperature"] == 0
+    assert "response_format" not in payload
+    assert "keep_alive" not in payload
+    assert "num_predict" not in payload
 
 
-def test_generate_ignores_reasoning_content(monkeypatch):
-    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: _ok_response("answer"))
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert resp.text == "answer"
-    assert "secret" not in resp.text
+def test_truncation_by_length_is_reported_as_an_error(monkeypatch):
+    _capture(monkeypatch, {
+        "choices": [{"message": {"content": "part"}, "finish_reason": "length"}]
+    })
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+    result = backend.generate(prompt="hi", model="m")
+    assert not result.success
+    assert "truncated" in (result.error or "")
 
 
-def test_generate_rejects_images_without_http_call(monkeypatch):
-    def boom(*a, **k):
-        raise AssertionError("HTTP must not be called for images")
+def test_reasoning_field_is_never_read_as_content(monkeypatch):
+    # Verificato sul campo: qwen3.6-27b riempie "reasoning" lasciando
+    # "content" a null finché non ha finito di ragionare.
+    _capture(monkeypatch, {
+        "choices": [{
+            "message": {"content": None, "reasoning": "The user has provided an image"},
+            "finish_reason": "stop",
+        }]
+    })
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+    result = backend.generate(prompt="hi", model="m")
+    assert not result.success
+    assert "empty content" in (result.error or "")
+
+
+def test_server_error_payload_becomes_an_error_response(monkeypatch):
+    _capture(monkeypatch, {"error": {"message": "model not found"}})
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+    result = backend.generate(prompt="hi", model="m")
+    assert not result.success
+    assert "model not found" in (result.error or "")
+
+
+def test_empty_choices_is_reported_as_malformed(monkeypatch):
+    _capture(monkeypatch, {"choices": []})
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+    result = backend.generate(prompt="hi", model="m")
+    assert not result.success
+    assert "malformed" in (result.error or "")
+
+
+def test_non_dict_json_body_is_reported_as_malformed(monkeypatch):
+    _capture(monkeypatch, [])
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+    result = backend.generate(prompt="hi", model="m")
+    assert not result.success
+    assert "malformed" in (result.error or "")
+
+
+def test_transport_exception_becomes_an_error_response(monkeypatch):
+    def boom(url, payload, *, timeout_s):
+        raise ConnectionRefusedError("nope")
 
     monkeypatch.setattr(openai_client, "_post_json", boom)
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m", images_b64=["Zm9v"])
-    assert not resp.success
-    assert "vision" in (resp.error or "")
-
-
-def test_generate_maps_http_error_to_llmresponse(monkeypatch):
-    def boom(*a, **k):
-        raise TimeoutError("timed out")
-
-    monkeypatch.setattr(openai_client, "_post_json", boom)
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert not resp.success
-    assert "TimeoutError" in (resp.error or "")
-
-
-def test_generate_empty_content_is_error(monkeypatch):
-    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: _ok_response("   "))
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert not resp.success
-    assert "empty" in (resp.error or "")
-
-
-def test_generate_error_body_is_error(monkeypatch):
-    monkeypatch.setattr(
-        openai_client, "_post_json",
-        lambda *a, **k: {"error": {"message": "model not found", "type": "invalid_request_error"}},
-    )
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert not resp.success
-    assert "model not found" in (resp.error or "")
-
-
-def test_generate_malformed_response_is_error(monkeypatch):
-    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: {"choices": []})
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert not resp.success
-
-
-def test_generate_non_dict_json_body_is_error(monkeypatch):
-    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: [])
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert not resp.success
-    assert "malformed" in (resp.error or "")
-
-
-def test_generate_max_tokens_budget(monkeypatch):
-    captured = {}
-
-    def fake_post(url, payload, *, timeout_s):
-        captured["payload"] = payload
-        return _ok_response()
-
-    monkeypatch.setattr(openai_client, "_post_json", fake_post)
-    Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert captured["payload"]["max_tokens"] == 8000
-
-
-def test_generate_length_finish_reason_is_error(monkeypatch):
-    resp_body = _ok_response('{"truncated": ')
-    resp_body["choices"][0]["finish_reason"] = "length"
-    monkeypatch.setattr(openai_client, "_post_json", lambda *a, **k: resp_body)
-    resp = Ds4Backend("http://localhost:8000").generate(prompt="q", model="m")
-    assert not resp.success
-    assert "truncated" in (resp.error or "")
+    backend = OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm"))
+    result = backend.generate(prompt="hi", model="m")
+    assert not result.success
+    assert "ConnectionRefusedError" in (result.error or "")
