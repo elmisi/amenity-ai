@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import time
-from typing import Optional
+from typing import Mapping, Optional
 
-from ..ollama_client import generate_with_image_file
+from ..llm_router import generate_with_image_file
 
 
 # Keywords that indicate a scanned document (in caption from vision model)
@@ -151,7 +151,7 @@ def caption_image(
     *,
     vision_models: tuple[str, ...],
     prompt: str,
-    base_url: str,
+    provider_urls: Mapping[str, str],
     timeout_s: float = 180.0,
     max_retries: int = 1,
 ) -> tuple[str, ImageCaptionMeta]:
@@ -171,7 +171,7 @@ def caption_image(
                     model=vm,
                     prompt=prompt,
                     image_path=str(image_path),
-                    base_url=base_url,
+                    provider_urls=provider_urls,
                     timeout_s=timeout_s,
                 )
             except TimeoutError:
@@ -228,7 +228,7 @@ def extract_image_smart(
     *,
     vision_models: tuple[str, ...],
     vision_prompt: str,
-    base_url: str,
+    provider_urls: Mapping[str, str],
     ocr_mode: str,
     max_chars: int = 14000,
     vision_timeout_s: float = 120.0,
@@ -248,7 +248,7 @@ def extract_image_smart(
         path,
         vision_models=vision_models,
         prompt=vision_prompt,
-        base_url=base_url,
+        provider_urls=provider_urls,
         timeout_s=vision_timeout_s,
     )
 
