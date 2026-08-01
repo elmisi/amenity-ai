@@ -105,3 +105,14 @@ il TUI.
 Nuova funzionalità retrocompatibile → **minor bump a 0.11.0** (VERSION + pyproject a
 mano) + CHANGELOG. Docs: README (sezione LLM Provider: endpoint configurabile),
 PROJECT_SPEC (configurable items), CLAUDE.md (nota su discovery HTTP).
+
+## Addendum (2026-08-02): troncamento Ollama
+
+In fase di verifica e2e contro un server Ollama remoto con un modello 8B è emerso che i
+tetti `num_predict` (facts 400, classify 320, repair 220, normalize 220) erano tarati su
+modelli da 1B: l'output veniva troncato a metà JSON e, poiché `done_reason: "length"` non
+veniva letto, il risultato degradato passava per valido. Il branch include quindi anche:
+tetti ridimensionati (facts 2000, classify 1200, repair 1500), budget di normalize
+proporzionale al batch (`max(800, 300 * batch_size)`), e `done_reason == "length"` trattato
+come errore così scattano i fallback per-candidato. Dettagli e motivazione empirica nel
+Task 5 di `docs/superpowers/plans/2026-08-01-ollama-configurable-url.md`.

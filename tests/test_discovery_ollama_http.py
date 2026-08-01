@@ -92,3 +92,19 @@ def test_discover_providers_defaults_to_localhost(monkeypatch):
     monkeypatch.setattr(discovery, "_discover_ollama", fake_ollama)
     discover_providers()
     assert captured["base_url"] == "http://localhost:11434"
+
+
+def test_discover_ollama_non_list_models_does_not_raise(monkeypatch):
+    monkeypatch.setattr(discovery, "_get_json", lambda url, *, timeout_s: {"models": 5})
+    info = _discover_ollama("http://localhost:11434")
+    assert info.available
+    assert info.models == ()
+
+
+def test_discover_ds4_non_list_data_does_not_raise(monkeypatch):
+    from archiver.discovery import _discover_ds4
+
+    monkeypatch.setattr(discovery, "_get_json", lambda url, *, timeout_s: {"data": 5})
+    info = _discover_ds4("http://localhost:8000")
+    assert info.available
+    assert info.models == ()

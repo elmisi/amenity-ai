@@ -207,11 +207,14 @@ fi
 header "Checking Ollama (LLM provider)"
 
 if ! has_cmd ollama; then
-    warn "Ollama not found"
+    warn "Ollama not found locally"
     printf "\n"
-    info "Ollama is required to run $APP_NAME."
-    info "Install Ollama:"
+    info "$APP_NAME needs an Ollama server reachable over HTTP."
+    info "If Ollama runs on this machine, install it:"
     printf "  ${BOLD}curl -fsSL https://ollama.com/install.sh | sh${NC}\n"
+    printf "\n"
+    info "If Ollama runs on another machine on your network, point $APP_NAME at it"
+    info "instead: launch it and set the endpoint in Settings (F2)."
     printf "\n"
 elif ! ollama_is_running; then
     warn "Ollama is installed but not running"
@@ -220,6 +223,8 @@ elif ! ollama_is_running; then
     printf "  ${BOLD}ollama serve${NC}\n"
     printf "\n"
     info "(or run it in the background / as a service)\n"
+    info "Using a remote Ollama instead? Set its endpoint in Settings (F2)."
+    printf "\n"
 else
     success "Ollama is installed and running"
 

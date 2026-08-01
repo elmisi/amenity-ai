@@ -40,7 +40,9 @@ def _discover_ds4(base_url: str) -> ProviderInfo:
 
     models: list[str] = []
     entries = data.get("data") if isinstance(data, dict) else None
-    for entry in entries or []:
+    if not isinstance(entries, list):
+        entries = []
+    for entry in entries:
         model_id = entry.get("id") if isinstance(entry, dict) else None
         if isinstance(model_id, str) and model_id.strip():
             models.append(DS4_PREFIX + model_id.strip())
@@ -58,7 +60,9 @@ def _discover_ollama(base_url: str) -> ProviderInfo:
 
     models: list[str] = []
     entries = data.get("models") if isinstance(data, dict) else None
-    for entry in entries or []:
+    if not isinstance(entries, list):
+        entries = []
+    for entry in entries:
         name = entry.get("name") if isinstance(entry, dict) else None
         if isinstance(name, str) and name.strip():
             models.append(name.strip())
