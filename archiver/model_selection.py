@@ -1,20 +1,48 @@
+"""Ordinamento dei modelli candidati, per ruolo.
+
+Sostituisce le tre liste di preferenza hardcoded che vivevano in
+model_selection, task_builders e app. L'ordine è deciso dai metadati
+reali; la lista curata interviene solo come spareggio dentro una fascia.
+
+Ordine dei criteri:
+  1. priorità del provider   (vllm > ollama > ds4)
+  2. fascia di taglia        (per ruolo)
+  3. posizione in CURATED_BIAS
+  4. id completo, alfabetico
+"""
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING
+from typing import Optional, Sequence, TYPE_CHECKING
 
-from .llm_router import DS4_PREFIX
+from .capabilities import CAP_COMPLETION, CAP_VISION
+from .providers import provider_priority, split_model_id
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .discovery import DiscoveryResult
+    from .discovery import ModelInfo
 
+ROLE_FACTS = "facts"
+ROLE_CLASSIFY = "classify"
+ROLE_VISION = "vision"
 
-_DS4_TEXT_PREFER = (
+ROLE_CAPABILITY = {
+    ROLE_FACTS: CAP_COMPLETION,
+    ROLE_CLASSIFY: CAP_COMPLETION,
+    ROLE_VISION: CAP_VISION,
+}
+
+# Confini fra le fasce, in miliardi di parametri: indici 0..4.
+_BUCKET_EDGES = (2.0, 5.0, 9.0, 20.0)
+_CLASSIFY_TARGET_BUCKET = 2  # la fascia 5-9B
+_UNKNOWN_BUCKET_KEY = 99
+
+# Modelli già provati in passato. Ordina SOLO dentro una fascia, quindi il
+# fatto che sia tarata su hardware più limitato non la rende dannosa.
+# Manutenuta a mano, con task dedicate: nessun auto-benchmark.
+CURATED_BIAS: tuple[str, ...] = (
     "ds4:deepseek-v4-flash",
     "ds4:deepseek-v4-pro",
-)
-
-_TEXT_PREFER = _DS4_TEXT_PREFER + (
+    "qwen3.6-27b",
+    "qwen3:8b",
     "gemma3:1b",
     "qwen2.5:3b-instruct",
     "phi4-mini:latest",
@@ -26,73 +54,49 @@ _TEXT_PREFER = _DS4_TEXT_PREFER + (
     "qwen2.5:7b",
     "mistral:latest",
     "gemma3:latest",
-)
-
-_VISION_PREFER = (
     "moondream:latest",
-    "gemma3:latest",
-    "llava:latest",
     "llava:7b",
     "minicpm-v:latest",
     "bakllava:latest",
 )
 
 
-def _is_vision_model(model_name: str) -> bool:
-    ml = model_name.lower()
-    if any(token in ml for token in ("llava", "moondream", "minicpm", "bakllava")):
-        return True
-    if "vision" in ml:
-        return True
-    if ml.startswith("gemma3:"):
-        return not any(token in ml for token in ("270m", "1b"))
-    return False
+def size_bucket(size_b: Optional[float]) -> Optional[int]:
+    if size_b is None:
+        return None
+    for index, edge in enumerate(_BUCKET_EDGES):
+        if size_b < edge:
+            return index
+    return len(_BUCKET_EDGES)
 
 
-def _is_text_candidate(model_name: str) -> bool:
-    ml = model_name.lower()
-    if any(token in ml for token in ("embed", "embedding", "whisper", "tts")):
-        return False
-    return True
+def _bucket_key(model: "ModelInfo", role: str) -> int:
+    bucket = size_bucket(model.parameter_size_b)
+    if bucket is None:
+        return _UNKNOWN_BUCKET_KEY
+    if role == ROLE_CLASSIFY:
+        return abs(bucket - _CLASSIFY_TARGET_BUCKET)
+    return bucket
 
 
-def _order_candidates(models: list[str], preferred: tuple[str, ...]) -> list[str]:
-    ordered = [model for model in preferred if model in models]
-    ordered.extend(model for model in models if model not in ordered)
-    return ordered
+def _curated_key(model_id: str) -> int:
+    if model_id in CURATED_BIAS:
+        return CURATED_BIAS.index(model_id)
+    _, bare = split_model_id(model_id)
+    if bare in CURATED_BIAS:
+        return CURATED_BIAS.index(bare)
+    return len(CURATED_BIAS)
 
 
-def pick_model_candidates(discovery: "DiscoveryResult | None") -> tuple[tuple[str, ...], tuple[str, ...]]:
-    models: list[str] = []
-    if discovery:
-        for p in discovery.providers:
-            if p.name in ("ollama", "ds4") and p.available and p.models:
-                models.extend(p.models)
-
-    if not models:
-        return (), ()
-
-    text_candidates = [
-        model
-        for model in models
-        if _is_text_candidate(model) and not (_is_vision_model(model) and not model.lower().startswith(("gemma3:", "ministral-3:")))
-    ]
-    vision_candidates = [model for model in models if _is_vision_model(model) and not model.startswith(DS4_PREFIX)]
-
-    # Keep newer generic names such as `qwen3:4b` and `phi4-mini:latest` eligible even
-    # when they don't advertise themselves with `-instruct` or `-chat`.
-    text_candidates = _order_candidates(text_candidates, _TEXT_PREFER)
-    vision_candidates = _order_candidates(vision_candidates, _VISION_PREFER)
-
-    # If discovery returns only generic model names, preserve a predictable ordering.
-    text_candidates = sorted(
-        text_candidates,
+def rank_models(models: Sequence["ModelInfo"], role: str) -> tuple[str, ...]:
+    required = ROLE_CAPABILITY.get(role, CAP_COMPLETION)
+    eligible = [model for model in models if required in model.capabilities]
+    eligible.sort(
         key=lambda model: (
-            model not in _TEXT_PREFER,
-            not re.search(r":(?:270m|1b|2b|3b|4b)\b", model.lower()),
-            model.lower(),
-        ),
+            provider_priority(model.provider),
+            _bucket_key(model, role),
+            _curated_key(model.id),
+            model.id,
+        )
     )
-    text_candidates = _order_candidates(text_candidates, _TEXT_PREFER)
-
-    return tuple(text_candidates[:6]), tuple(vision_candidates[:4])
+    return tuple(model.id for model in eligible)
