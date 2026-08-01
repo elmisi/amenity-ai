@@ -21,7 +21,7 @@ Problemi concreti che questa spec risolve:
 - Non esiste modo di sapere perché una scansione fallisce quando manca un modello adatto.
 - `openai_client.py` rifiuta categoricamente le immagini, quindi un modello multimodale servito via OpenAI API è inutilizzabile.
 
-### Verifica sul campo (2026-08-01, `amarcord.local`)
+### Verifica sul campo (2026-08-01, macchina LAN dell'utente)
 
 Dati reali raccolti durante la progettazione, usati come fixture nei test:
 
@@ -241,7 +241,7 @@ Cinque check in due gruppi:
 
 `model_catalog.py` è la rosa curata degli installabili per ruolo: tag Ollama, dimensione indicativa su disco, una riga di motivazione. Stesso criterio di manutenzione di `CURATED_BIAS`.
 
-`ollama_admin.pull_model()` fa `POST /api/pull` in streaming di righe JSON (`status`, `completed`, `total`), seguendo le due convenzioni già in vigore nel progetto: cancellazione cooperativa via callback `should_cancel`, ed esecuzione in un worker perché non deve mai bloccare l'event loop di Textual. Il download avviene **sulla macchina che ospita Ollama**: puntando ad amarcord i gigabyte finiscono lì. La schermata mostra host e dimensione prima di partire; la selezione più `invio` è la conferma. A download riuscito rilancia la scoperta e ricalcola il report, così il check passa da rosso a verde senza riavviare.
+`ollama_admin.pull_model()` fa `POST /api/pull` in streaming di righe JSON (`status`, `completed`, `total`), seguendo le due convenzioni già in vigore nel progetto: cancellazione cooperativa via callback `should_cancel`, ed esecuzione in un worker perché non deve mai bloccare l'event loop di Textual. Il download avviene **sulla macchina che ospita Ollama**: puntando a un host remoto i gigabyte finiscono lì. La schermata mostra host e dimensione prima di partire; la selezione più `invio` è la conferma. A download riuscito rilancia la scoperta e ricalcola il report, così il check passa da rosso a verde senza riavviare.
 
 **Superfici**: `amenity-ai doctor` apre la schermata ed esce con codice diverso da zero se `worst == "fail"`, così resta usabile in uno script di post-installazione; il tasto `[d]` nella TUI apre la stessa schermata. **Nessuna apertura automatica**: la riga di stato provider prodotta da `ui_status.provider_summary` resta il canale passivo.
 
@@ -272,7 +272,7 @@ Le `cache.json` esistenti non vengono migrate: `model_used` contiene nomi nudi e
 - **`providers.py`** — round-trip `split`/`join`; `"ollama:qwen3:8b"` spezzato solo sul prefisso noto; un id legacy `"qwen3:8b"` non deve produrre un provider `qwen3`.
 - **`capabilities.py`** — taglia estratta da `qwen3.6-27b` (27, non 3.6), da `/models/Qwen3.6-27B-AWQ-INT4`, assente quando il nome non dice nulla; euristica vision sui nomi noti.
 - **`rank_models`** — i quattro livelli di ordinamento, i tre ruoli, l'esclusione autoritativa degli `embedding`, i modelli di taglia ignota in coda.
-- **`discovery`** — fixture con i payload reali catturati il 2026-08-01 da `amarcord.local` (Ollama 0.31.1 `/api/tags`, vLLM 0.21.0 `/v1/models`), più payload malformati, estendendo il test di rifiuto già presente dalla 0.11.0.
+- **`discovery`** — fixture con i payload reali catturati il 2026-08-01 dalla macchina LAN dell'utente (Ollama 0.31.1 `/api/tags`, vLLM 0.21.0 `/v1/models`), più payload malformati, estendendo il test di rifiuto già presente dalla 0.11.0.
 - **`run_doctor`** — provider finti: tutti spenti, solo Ollama, vision solo euristico, modello fissato inesistente.
 - **`llm_router`** — routing per prefisso; provider non configurato produce un errore esplicito.
 
