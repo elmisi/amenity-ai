@@ -1,12 +1,13 @@
-"""Capability dei modelli e parsing della taglia.
+"""Model capabilities and parameter-size parsing.
 
-Tre gradini di affidabilità decrescente, in quest'ordine:
-  declared  - dichiarate dal provider (Ollama >= 0.31 in /api/tags)
-  heuristic - dedotte dal nome, per i provider OpenAI-compatible
-  probed    - confermate da una richiesta reale, solo dentro il doctor
+Three rungs of decreasing trust:
+  declared  - stated by the provider (Ollama >= 0.31, in /api/tags)
+  heuristic - guessed from the name, for OpenAI-compatible providers
+  probed    - confirmed by a real request, only inside the doctor
 
-Il gradino "probed" esiste perché l'euristica ha falsi negativi reali: un
-modello servito via OpenAI API può accettare immagini senza dirlo nel nome.
+The "probed" rung exists because the heuristic has real false negatives: a
+model served over the OpenAI API can accept images without saying so in its
+name.
 """
 from __future__ import annotations
 
@@ -21,8 +22,8 @@ SOURCE_DECLARED = "declared"
 SOURCE_HEURISTIC = "heuristic"
 SOURCE_PROBED = "probed"
 
-# Un numero conta come taglia solo se seguito da "b" a fine token: in
-# "qwen3.6-27b" il 3.6 è la versione e va ignorato.
+# A number counts as a size only when followed by "b" at the end of a token:
+# in "qwen3.6-27b" the 3.6 is the version and must be ignored.
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b(?![a-z0-9])", re.IGNORECASE)
 
 _VISION_TOKENS = (
@@ -49,7 +50,7 @@ _IMAGE_ERROR_TOKENS = (
 
 
 def parse_parameter_size(*texts: str) -> Optional[float]:
-    """Prima taglia trovata scorrendo gli argomenti nell'ordine dato."""
+    """First size found while walking the arguments in the order given."""
     for text in texts:
         if not text:
             continue
@@ -63,7 +64,7 @@ def parse_parameter_size(*texts: str) -> Optional[float]:
 
 
 def guess_capabilities(*, model_id: str, root: str = "") -> frozenset[str]:
-    """Capability dedotte dal nome, per i provider che non le dichiarano."""
+    """Capabilities guessed from the name, for providers that declare none."""
     haystack = f"{model_id} {root}".lower()
     caps = {CAP_COMPLETION}
     if any(token in haystack for token in _VISION_TOKENS):
@@ -72,10 +73,10 @@ def guess_capabilities(*, model_id: str, root: str = "") -> frozenset[str]:
 
 
 def interpret_probe(*, status: int, body: str) -> Optional[bool]:
-    """True = vision confermata, False = text-only confermato, None = non conclusivo.
+    """True = vision confirmed, False = text-only confirmed, None = inconclusive.
 
-    Il probe può smentire l'euristica, non può fingere una certezza che non
-    ha: un 500 o un timeout non dicono nulla sulle capability del modello.
+    The probe may contradict the heuristic, but it cannot fake a certainty it
+    does not have: a 500 or a timeout says nothing about the model.
     """
     if status == 200:
         return True

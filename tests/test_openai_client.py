@@ -69,7 +69,7 @@ def test_each_provider_switches_reasoning_off_with_its_own_lever(monkeypatch):
     )
     assert captured["payload"]["reasoning_effort"] == "low"
 
-    # vLLM accetta reasoning_effort e lo ignora: serve la sua leva.
+    # vLLM accepts reasoning_effort and ignores it: it needs its own lever.
     captured = _capture(monkeypatch, _ok())
     OpenAICompatBackend("http://vllm.invalid", provider_by_name("vllm")).generate(
         prompt="hi", model="qwen3.6-27b", think=False

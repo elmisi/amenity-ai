@@ -70,7 +70,7 @@ def test_cancellation_stops_the_stream_and_reports_it():
 
     error = pull_model(base_url="http://ollama.invalid", model="m",
                        should_cancel=should_cancel, opener=opener)
-    assert error == "annullato"
+    assert error == "cancelled"
 
 
 def test_transport_failure_is_returned_as_a_message():

@@ -124,7 +124,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         )
         yield Static(self._provider_info or "Provider: (unknown)", id="provider", markup=False)
         for spec in PROVIDERS:
-            placeholder = spec.default_url or "vuoto = disabilitato"
+            placeholder = spec.default_url or "empty = disabled"
             yield Static(f"{spec.name} endpoint ({placeholder}):",
                          classes="provider_label", id=f"{spec.name}_label")
             yield Input(value=self._providers.get(spec.name, ""),

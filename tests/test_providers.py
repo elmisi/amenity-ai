@@ -25,7 +25,7 @@ def test_split_uses_known_prefix_not_first_colon():
 
 
 def test_split_treats_bare_legacy_id_as_ollama():
-    # Config 0.11.0 salvavano "qwen3:8b" senza prefisso: non deve mai
+    # 0.11.0 configs saved "qwen3:8b" with no prefix: it must never
     # produrre un provider inesistente "qwen3".
     spec, bare = split_model_id("qwen3:8b")
     assert spec.name == "ollama"
@@ -54,9 +54,10 @@ def test_only_ollama_supports_install():
 
 
 def test_each_openai_compat_provider_knows_how_to_switch_reasoning_off():
-    # Misurato il 2026-08-02 su vLLM 0.21 con qwen3.6-27b: reasoning_effort è
-    # accettato e ignorato (55.2s con e senza), mentre enable_thinking=False
-    # porta la stessa richiesta a 2.2s. Una leva per provider, non una sola.
+    # Measured on 2026-08-02 against vLLM 0.21 with qwen3.6-27b:
+    # reasoning_effort is accepted and ignored (55.2s either way), while
+    # enable_thinking=False brings the same request down to 2.2s.
+    # One lever per provider, not a single shared one.
     by_name = {p.name: p for p in PROVIDERS}
     assert by_name["vllm"].thinking_off == {"chat_template_kwargs": {"enable_thinking": False}}
     assert by_name["ds4"].thinking_off == {"reasoning_effort": "low"}

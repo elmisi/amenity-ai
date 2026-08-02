@@ -1,8 +1,8 @@
-"""La vision deve passare dal router, non parlare direttamente a Ollama.
+"""Vision must go through the router, not talk to Ollama directly.
 
-Prima del redesign `extractors/image.py` chiamava ollama_client, quindi un
-modello vision servito da vLLM sarebbe arrivato a Ollama con il prefisso
-attaccato. Il doctor lo dichiarerebbe disponibile e poi fallirebbe.
+Before the redesign `extractors/image.py` called ollama_client, so a vision
+model served by vLLM would have reached Ollama with its prefix attached.
+The doctor would call it available and then it would fail.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def test_caption_routes_a_vllm_model_through_the_router(monkeypatch, tmp_path):
     assert caption == "a cat"
     assert meta.vision_model_used == "vllm:qwen3.6-27b"
     assert captured["provider_urls"] == URLS
-    # Il prefisso resta: è il router a scioglierlo.
+    # The prefix stays on: resolving it is the router's job.
     assert captured["model"] == "vllm:qwen3.6-27b"
 
 
@@ -50,7 +50,7 @@ def test_caption_falls_back_to_the_next_vision_model(monkeypatch, tmp_path):
         calls.append(kwargs["model"])
         if kwargs["model"] == "vllm:qwen3.6-27b":
             return OllamaGenerateResult(response="", model=kwargs["model"], done=False,
-                                        error="vllm: endpoint non configurato")
+                                        error="vllm: endpoint not configured")
         return OllamaGenerateResult(response="a dog", model=kwargs["model"], done=True)
 
     monkeypatch.setattr(image_extractor, "generate_with_image_file", fake)

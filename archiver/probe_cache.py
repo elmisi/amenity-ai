@@ -1,8 +1,8 @@
-"""Persistenza degli esiti conclusivi del probe delle capability.
+"""Persistence of conclusive capability-probe results.
 
-Senza questo, il fatto che un modello OpenAI-compatible sia multimodale
-andrebbe perso a ogni riavvio e il percorso veloce continuerebbe a fidarsi
-dell'euristica sul nome, che su quel caso sbaglia.
+Without it, the knowledge that an OpenAI-compatible model is multimodal
+would be lost on every restart and the fast path would keep trusting the
+name heuristic, which is wrong in exactly that case.
 """
 from __future__ import annotations
 

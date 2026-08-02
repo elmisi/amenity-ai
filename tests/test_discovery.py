@@ -76,7 +76,7 @@ def test_openai_models_are_parsed_as_heuristic_with_size_from_root():
     assert m.id == "vllm:qwen3.6-27b"
     assert m.provider == "vllm"
     assert m.capability_source == SOURCE_HEURISTIC
-    # L'euristica sul nome NON vede la multimodalità: la corregge solo il probe.
+    # The name heuristic does NOT see multimodality: only the probe corrects it.
     assert CAP_VISION not in m.capabilities
     assert m.parameter_size_b == 27.0
     assert m.context_length == 131072

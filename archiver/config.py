@@ -36,7 +36,7 @@ class AppConfig:
 
 
 def migrate_model_id(value: str) -> str:
-    """Gli id nudi delle config < 0.12.0 significavano Ollama."""
+    """Bare ids in configs older than 0.12.0 meant Ollama."""
     value = (value or "").strip()
     if not value or value == "auto":
         return "auto"
@@ -133,7 +133,7 @@ def load_config() -> AppConfig:
         val = undated_folder_name.strip()
         if val:
             kwargs["undated_folder_name"] = val
-    # providers: formato nuovo, con fallback sulle due chiavi piatte < 0.12.0
+    # providers: new format, falling back to the two flat keys of < 0.12.0
     providers = default_provider_urls()
     providers_raw = data.get("providers")
     if isinstance(providers_raw, dict):

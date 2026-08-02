@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.3] - 2026-08-02
+
+- Everything the app says is in English again. The provider redesign had
+  introduced Italian in the doctor screen, the check messages, the router
+  errors and the model catalogue, while the rest of the interface was
+  English. Comments and docstrings in the modules added by that work follow.
+  The Italian stopword lists stay: those are data, not prose.
+
 ## [0.12.2] - 2026-08-02
 
 - Remove an analysis path that no code reached: `analyze_item` had no callers

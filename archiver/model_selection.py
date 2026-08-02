@@ -1,14 +1,14 @@
-"""Ordinamento dei modelli candidati, per ruolo.
+"""Ordering of the candidate models, by role.
 
-Sostituisce le tre liste di preferenza hardcoded che vivevano in
-model_selection, task_builders e app. L'ordine è deciso dai metadati
-reali; la lista curata interviene solo come spareggio dentro una fascia.
+Replaces the three hardcoded preference lists that used to live in
+model_selection, task_builders and app. The order comes from real metadata;
+the curated list only breaks ties inside a size band.
 
-Ordine dei criteri:
-  1. priorità del provider   (vllm > ollama > ds4)
-  2. fascia di taglia        (per ruolo)
-  3. posizione in CURATED_BIAS
-  4. id completo, alfabetico
+Criteria, in order:
+  1. provider priority       (vllm > ollama > ds4)
+  2. size band               (per role)
+  3. position in CURATED_BIAS
+  4. full id, alphabetical
 """
 from __future__ import annotations
 
@@ -30,14 +30,14 @@ ROLE_CAPABILITY = {
     ROLE_VISION: CAP_VISION,
 }
 
-# Confini fra le fasce, in miliardi di parametri: indici 0..4.
+# Band edges, in billions of parameters: indices 0..4.
 _BUCKET_EDGES = (2.0, 5.0, 9.0, 20.0)
-_CLASSIFY_TARGET_BUCKET = 2  # la fascia 5-9B
+_CLASSIFY_TARGET_BUCKET = 2  # the 5-9B band
 _UNKNOWN_BUCKET_KEY = 99
 
-# Modelli già provati in passato. Ordina SOLO dentro una fascia, quindi il
-# fatto che sia tarata su hardware più limitato non la rende dannosa.
-# Manutenuta a mano, con task dedicate: nessun auto-benchmark.
+# Models already tried in the past. It orders ONLY within a band, so being
+# tuned on more limited hardware does not make it harmful.
+# Maintained by hand, in dedicated passes: no auto-benchmarking.
 CURATED_BIAS: tuple[str, ...] = (
     "ds4:deepseek-v4-flash",
     "ds4:deepseek-v4-pro",

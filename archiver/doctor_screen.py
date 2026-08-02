@@ -1,8 +1,8 @@
-"""Schermata del doctor: mostra il report e sa rimediare.
+"""The doctor screen: shows the report and knows how to act on it.
 
-Nessuna logica di diagnosi qui dentro: run_doctor decide, questa classe
-rende. Il probe e il download girano in worker perché non devono mai
-bloccare l'event loop di Textual.
+No diagnosis logic lives here: run_doctor decides, this class renders. The
+probe and the download run in workers because they must never block
+Textual's event loop.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ _GB = 1024 ** 3
 
 
 def _network_probe(*, url: str, bare_id: str) -> Optional[bool]:
-    """Interroga il modello e memorizza solo gli esiti conclusivi."""
+    """Query the model, and remember only the conclusive answers."""
     verdict = probe_vision(base_url=url, model=bare_id)
     if verdict is not None:
         caps = {CAP_COMPLETION} | ({CAP_VISION} if verdict else set())
@@ -76,10 +76,10 @@ class DoctorScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield Static(
-            "Doctor: r ricontrolla • Enter installa • x annulla • Esc chiude",
+            "Doctor: r re-check • Enter install • x cancel • Esc close",
             id="intro",
         )
-        yield Static("Analisi in corso…", id="report", markup=False)
+        yield Static("Checking…", id="report", markup=False)
         yield OptionList(id="remedies")
         yield Static("", id="pull_status", markup=False)
         yield Footer()
@@ -87,7 +87,7 @@ class DoctorScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         self.action_refresh()
 
-    # --- diagnosi -------------------------------------------------------
+    # --- diagnosis ------------------------------------------------------
 
     def action_refresh(self) -> None:
         self.query_one("#pull_status", Static).update("")
@@ -121,29 +121,29 @@ class DoctorScreen(ModalScreen[None]):
             gb = remedy.size_bytes / _GB
             if remedy.kind == "pull":
                 option_list.add_option(
-                    f"installa {remedy.model} su {remedy.provider} — {gb:.1f} GB · {remedy.note}"
+                    f"install {remedy.model} on {remedy.provider} — {gb:.1f} GB · {remedy.note}"
                 )
             else:
-                option_list.add_option(f"(manuale) {remedy.model} — {remedy.note}")
+                option_list.add_option(f"(manual) {remedy.model} — {remedy.note}")
 
-    # --- installazione --------------------------------------------------
+    # --- installation ---------------------------------------------------
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "remedies":
             return
         remedy = self._remedies[event.option_index]
         if remedy.kind != "pull":
-            return  # gli hint non sono azionabili: non c'è API per farlo
+            return  # hints are not actionable: there is no API for it
         status = self._discovery.status(remedy.provider) if self._discovery else None
         if status is None or not status.url:
             return
 
         self._cancel_pull = False
         gb = remedy.size_bytes / _GB
-        # Il download avviene sulla macchina che ospita Ollama, non su questa:
-        # dirlo esplicitamente prima di partire è parte della conferma.
+        # The download happens on the machine hosting Ollama, not on this
+        # one: saying so before it starts is part of the confirmation.
         self.query_one("#pull_status", Static).update(
-            f"Scarico {remedy.model} su {status.url} (~{gb:.1f} GB). x per annullare."
+            f"Downloading {remedy.model} on {status.url} (~{gb:.1f} GB). x to cancel."
         )
         url, model = status.url, remedy.model
         self.run_worker(lambda: self._pull(url, model), thread=True, exclusive=True)
@@ -168,7 +168,7 @@ class DoctorScreen(ModalScreen[None]):
         if error:
             self.app.call_from_thread(self._set_pull_status, f"✗ {error}")
             return
-        self.app.call_from_thread(self._set_pull_status, "✓ installato")
+        self.app.call_from_thread(self._set_pull_status, "✓ installed")
         self.app.call_from_thread(self.action_refresh)
         if self._on_refresh is not None:
             self.app.call_from_thread(self._on_refresh)
@@ -184,7 +184,7 @@ class DoctorScreen(ModalScreen[None]):
 
 
 class _DoctorApp(App):
-    """App minimale per il sottocomando CLI: solo la schermata doctor."""
+    """Minimal app for the CLI subcommand: the doctor screen and nothing else."""
 
     def __init__(self, settings) -> None:
         super().__init__()
@@ -202,7 +202,7 @@ class _DoctorApp(App):
 
 
 def run_doctor_cli(settings) -> int:
-    """Esegue il doctor da solo e ritorna l'exit code del report."""
+    """Run the doctor on its own and return the report's exit code."""
     app = _DoctorApp(settings)
     app.run(mouse=False)
     return app.report.exit_code if app.report is not None else 1

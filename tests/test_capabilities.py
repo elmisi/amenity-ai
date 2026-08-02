@@ -10,7 +10,7 @@ from archiver.capabilities import (
 
 
 def test_size_from_vllm_id_ignores_the_version_number():
-    # "qwen3.6-27b": il 3.6 è la versione, il 27 è la taglia.
+    # "qwen3.6-27b": 3.6 is the version, 27 is the size.
     assert parse_parameter_size("qwen3.6-27b") == 27.0
 
 
@@ -33,7 +33,7 @@ def test_size_is_none_when_nothing_says_it():
 
 
 def test_size_takes_first_match_across_arguments_in_order():
-    # root ha la precedenza sull'id perché è più informativo
+    # root wins over the id because it carries more information
     assert parse_parameter_size("", "/models/Qwen-235B-A22B", "qwen") == 235.0
 
 
@@ -44,8 +44,8 @@ def test_vision_heuristic_recognises_known_families():
 
 
 def test_vision_heuristic_misses_qwen36_27b_which_is_why_the_probe_exists():
-    # Falso negativo verificato sul campo il 2026-08-01: il modello ACCETTA
-    # immagini ma il nome non lo dice. Solo il probe può correggerlo.
+    # False negative verified in the field on 2026-08-01: the model DOES
+    # accept images, but its name does not say so. Only the probe can fix it.
     caps = guess_capabilities(model_id="qwen3.6-27b")
     assert caps == frozenset({CAP_COMPLETION})
 
