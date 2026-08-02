@@ -5,7 +5,7 @@ import re
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 from .llm_router import generate
 
@@ -49,12 +49,15 @@ class AnalysisConfig:
     vision_model: str = "moondream:latest"
     text_models: tuple[str, ...] = ()
     vision_models: tuple[str, ...] = ()
-    ollama_base_url: str = "http://localhost:11434"
-    ds4_base_url: str = ""
+    provider_urls: dict[str, str] = None  # type: ignore[assignment]
     output_language: str = "auto"  # auto | it | en
     taxonomy: Taxonomy = _DEFAULT_TAXONOMY
     filename_separator: str = "space"  # space | underscore | dash
     ocr_mode: str = "balanced"  # fast | balanced | high
+
+    def __post_init__(self) -> None:
+        if self.provider_urls is None:
+            object.__setattr__(self, "provider_urls", {})
 
 
 @dataclass(frozen=True)
@@ -223,15 +226,14 @@ def _truncate_raw_output(text: str) -> str:
     return raw[: _MAX_LLM_RAW_OUTPUT_CHARS - 200] + "\n...[truncated]...\n" + raw[-200:]
 
 
-def _repair_json_dict_via_llm(*, model: str, raw_output: str, base_url: str, ds4_base_url: str = "") -> Optional[str]:
+def _repair_json_dict_via_llm(*, model: str, raw_output: str, provider_urls: Mapping[str, str]) -> Optional[str]:
     snippet = _truncate_raw_output(raw_output)
     prompt = build_json_repair_prompt(snippet=snippet)
     try:
         gen = generate(
             model=model,
             prompt=prompt,
-            base_url=base_url,
-            ds4_base_url=ds4_base_url,
+            provider_urls=provider_urls,
             timeout_s=60.0,
             response_format=_JSON_RESPONSE_FORMAT,
             think=False,
@@ -296,8 +298,7 @@ def _classify_from_text(
     content: str,
     filename: str,
     mtime_iso: str,
-    base_url: str,
-    ds4_base_url: str = "",
+    provider_urls: Mapping[str, str],
     reference_year_hint: Optional[str],
     category_hint: Optional[str],
     output_language: str,
@@ -320,8 +321,7 @@ def _classify_from_text(
         gen = generate(
             model=model,
             prompt=prompt,
-            base_url=base_url,
-            ds4_base_url=ds4_base_url,
+            provider_urls=provider_urls,
             timeout_s=180.0,
             response_format=_JSON_RESPONSE_FORMAT,
             think=False,
@@ -337,7 +337,7 @@ def _classify_from_text(
     llm_raw_output: Optional[str] = None
     if not isinstance(data, dict):
         llm_raw_output = _truncate_raw_output(out)
-        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, base_url=base_url, ds4_base_url=ds4_base_url)
+        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, provider_urls=provider_urls)
         if repaired:
             data = _extract_json(repaired)
     if not isinstance(data, dict):
@@ -492,8 +492,7 @@ def _try_text_models(
             content=content,
             filename=filename,
             mtime_iso=mtime_iso,
-            base_url=cfg.ollama_base_url,
-            ds4_base_url=cfg.ds4_base_url,
+            provider_urls=cfg.provider_urls,
             reference_year_hint=reference_year_hint,
             category_hint=category_hint,
             output_language=cfg.output_language,
@@ -512,8 +511,7 @@ def _extract_facts_from_text(
     content: str,
     filename: str,
     mtime_iso: str,
-    base_url: str,
-    ds4_base_url: str = "",
+    provider_urls: Mapping[str, str],
     year_hint_filename: Optional[str],
     year_hint_text: Optional[str],
     output_language: str,
@@ -530,8 +528,7 @@ def _extract_facts_from_text(
         gen = generate(
             model=model,
             prompt=prompt,
-            base_url=base_url,
-            ds4_base_url=ds4_base_url,
+            provider_urls=provider_urls,
             timeout_s=180.0,
             response_format=_JSON_RESPONSE_FORMAT,
             think=False,
@@ -548,7 +545,7 @@ def _extract_facts_from_text(
     llm_raw_output: Optional[str] = None
     if not isinstance(data, dict):
         llm_raw_output = _truncate_raw_output(out)
-        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, base_url=base_url, ds4_base_url=ds4_base_url)
+        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, provider_urls=provider_urls)
         if repaired:
             data = _extract_json(repaired)
     if not isinstance(data, dict):
@@ -645,8 +642,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
                 content=excerpt,
                 filename=path.name,
                 mtime_iso=item.mtime_iso,
-                base_url=config.ollama_base_url,
-                ds4_base_url=config.ds4_base_url,
+                provider_urls=config.provider_urls,
                 year_hint_filename=year_hint_filename,
                 year_hint_text=year_hint_text,
                 output_language=config.output_language,
@@ -676,7 +672,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
             path,
             vision_models=tuple(_vision_model_candidates(config)),
             vision_prompt=vision_prompt,
-            base_url=config.ollama_base_url,
+            provider_urls=config.provider_urls,
             ocr_mode=config.ocr_mode,
             max_chars=max_chars,
         )
@@ -704,8 +700,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
                 content=content,
                 filename=path.name,
                 mtime_iso=item.mtime_iso,
-                base_url=config.ollama_base_url,
-                ds4_base_url=config.ds4_base_url,
+                provider_urls=config.provider_urls,
                 year_hint_filename=year_hint_filename,
                 year_hint_text=year_hint_text,
                 output_language=config.output_language,
@@ -812,7 +807,7 @@ def analyze_item(item: ScanItem, *, config: AnalysisConfig) -> AnalysisResult:
             path,
             vision_models=tuple(_vision_model_candidates(config)),
             vision_prompt=vision_prompt,
-            base_url=config.ollama_base_url,
+            provider_urls=config.provider_urls,
             ocr_mode=config.ocr_mode,
             max_chars=max_chars,
         )

@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional
 
 from .llm_router import generate
 from .scanner import ScanItem
@@ -282,14 +282,14 @@ def normalize_items(
     *,
     items: list[ScanItem],
     model: str,
-    base_url: str,
     taxonomy: Taxonomy,
     output_language: str,
     filename_separator: str,
     chunk_size: int = 25,
     should_cancel: Optional[Callable[[], bool]] = None,
-    ds4_base_url: str = "",
+    provider_urls: Optional[Mapping[str, str]] = None,
 ) -> NormalizationResult:
+    provider_urls = provider_urls or {}
     allowed = taxonomy.allowed_names
     taxonomy_block = taxonomy_to_prompt_block(taxonomy)
 
@@ -315,13 +315,12 @@ def normalize_items(
                 single_result = normalize_items(
                     items=[single],
                     model=model,
-                    base_url=base_url,
+                    provider_urls=provider_urls,
                     taxonomy=taxonomy,
                     output_language=output_language,
                     filename_separator=filename_separator,
                     chunk_size=1,
                     should_cancel=should_cancel,
-                    ds4_base_url=ds4_base_url,
                 )
                 if single_result.error:
                     return NormalizationResult(by_path={**by_path, **fallback_by_path}, model_used=model, error=error_reason)
@@ -431,8 +430,7 @@ def normalize_items(
         gen = generate(
             model=model,
             prompt=prompt,
-            base_url=base_url,
-            ds4_base_url=ds4_base_url,
+            provider_urls=provider_urls,
             timeout_s=180.0,
             response_format=_NORMALIZE_RESPONSE_SCHEMA,
             think=False,
@@ -488,13 +486,12 @@ def normalize_items_with_fallback(
     *,
     items: list[ScanItem],
     models: tuple[str, ...],
-    base_url: str,
     taxonomy: Taxonomy,
     output_language: str,
     filename_separator: str,
     chunk_size: int = 25,
     should_cancel: Optional[Callable[[], bool]] = None,
-    ds4_base_url: str = "",
+    provider_urls: Optional[Mapping[str, str]] = None,
 ) -> NormalizationResult:
     """Try each model in order; return the first result without an infra error.
 
@@ -503,9 +500,9 @@ def normalize_items_with_fallback(
     last: Optional[NormalizationResult] = None
     for model in models or ("",):
         result = normalize_items(
-            items=items, model=model, base_url=base_url, taxonomy=taxonomy,
+            items=items, model=model, provider_urls=provider_urls, taxonomy=taxonomy,
             output_language=output_language, filename_separator=filename_separator,
-            chunk_size=chunk_size, should_cancel=should_cancel, ds4_base_url=ds4_base_url,
+            chunk_size=chunk_size, should_cancel=should_cancel,
         )
         last = result
         if result.error is None or result.error == "Cancelled" or (should_cancel and should_cancel()):

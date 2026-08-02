@@ -9,6 +9,8 @@ from archiver.taxonomy import DEFAULT_TAXONOMY_LINES, parse_taxonomy_lines
 
 _TAXONOMY, _ = parse_taxonomy_lines(DEFAULT_TAXONOMY_LINES)
 
+URLS = {"ollama": "http://ollama.invalid:11434", "vllm": "http://vllm.invalid:8000", "ds4": ""}
+
 
 def _item() -> ScanItem:
     return ScanItem(
@@ -22,7 +24,7 @@ def _item() -> ScanItem:
     )
 
 
-def test_normalize_items_threads_ds4_base_url(monkeypatch):
+def test_normalize_items_threads_provider_urls(monkeypatch):
     captured = {}
 
     def fake_generate(**kwargs):
@@ -37,20 +39,19 @@ def test_normalize_items_threads_ds4_base_url(monkeypatch):
     monkeypatch.setattr(normalizer, "generate", fake_generate)
     res = normalizer.normalize_items(
         items=[_item()],
-        model="ds4:deepseek-v4-flash",
-        base_url="http://localhost:11434",
+        model="vllm:qwen3.6-27b",
+        provider_urls=URLS,
         taxonomy=_TAXONOMY,
         output_language="en",
         filename_separator="space",
         chunk_size=1,
-        ds4_base_url="http://localhost:8000",
     )
-    assert captured["ds4_base_url"] == "http://localhost:8000"
-    assert captured["model"] == "ds4:deepseek-v4-flash"
+    assert captured["provider_urls"] == URLS
+    assert captured["model"] == "vllm:qwen3.6-27b"
     assert res.error is None
 
 
-def test_normalize_items_default_ds4_empty(monkeypatch):
+def test_normalize_items_defaults_to_no_providers(monkeypatch):
     captured = {}
 
     def fake_generate(**kwargs):
@@ -60,14 +61,13 @@ def test_normalize_items_default_ds4_empty(monkeypatch):
     monkeypatch.setattr(normalizer, "generate", fake_generate)
     normalizer.normalize_items(
         items=[_item()],
-        model="gemma3:1b",
-        base_url="http://localhost:11434",
+        model="ollama:gemma3:1b",
         taxonomy=_TAXONOMY,
         output_language="en",
         filename_separator="space",
         chunk_size=1,
     )
-    assert captured["ds4_base_url"] == ""
+    assert captured["provider_urls"] == {}
 
 
 def test_normalize_items_with_fallback_tries_next_model_on_error(monkeypatch):
@@ -76,7 +76,7 @@ def test_normalize_items_with_fallback_tries_next_model_on_error(monkeypatch):
     def fake_generate(**kwargs):
         model = kwargs["model"]
         calls.append(model)
-        if model == "ds4:deepseek-v4-flash":
+        if model == "vllm:qwen3.6-27b":
             return OllamaGenerateResult(response="", model=model, done=True, error="connection refused")
         return OllamaGenerateResult(
             response='[{"path": "doc_1", "category": "unknown", "reference_year": null, '
@@ -88,15 +88,15 @@ def test_normalize_items_with_fallback_tries_next_model_on_error(monkeypatch):
     monkeypatch.setattr(normalizer, "generate", fake_generate)
     res = normalizer.normalize_items_with_fallback(
         items=[_item()],
-        models=("ds4:deepseek-v4-flash", "gemma3:1b"),
-        base_url="http://localhost:11434",
+        models=("vllm:qwen3.6-27b", "ollama:gemma3:1b"),
+        provider_urls=URLS,
         taxonomy=_TAXONOMY,
         output_language="en",
         filename_separator="space",
         chunk_size=1,
     )
     assert res.error is None
-    assert calls == ["ds4:deepseek-v4-flash", "gemma3:1b"]
+    assert calls == ["vllm:qwen3.6-27b", "ollama:gemma3:1b"]
 
 
 def test_normalize_items_with_fallback_stops_immediately_on_cancelled(monkeypatch):
@@ -109,8 +109,8 @@ def test_normalize_items_with_fallback_stops_immediately_on_cancelled(monkeypatc
     monkeypatch.setattr(normalizer, "normalize_items", fake_normalize_items)
     res = normalizer.normalize_items_with_fallback(
         items=[_item()],
-        models=("gemma3:1b", "ds4:deepseek-v4-flash"),
-        base_url="http://localhost:11434",
+        models=("ollama:gemma3:1b", "vllm:qwen3.6-27b"),
+        provider_urls=URLS,
         taxonomy=_TAXONOMY,
         output_language="en",
         filename_separator="space",
@@ -118,4 +118,4 @@ def test_normalize_items_with_fallback_stops_immediately_on_cancelled(monkeypatc
         should_cancel=lambda: True,
     )
     assert res.error == "Cancelled"
-    assert calls == ["gemma3:1b"]
+    assert calls == ["ollama:gemma3:1b"]

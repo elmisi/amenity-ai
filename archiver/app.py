@@ -27,11 +27,13 @@ from .setup_screen import SetupResult, SetupScreen
 from .setup_logic import app_config_from_settings, settings_from_setup
 from .taxonomy import parse_taxonomy_lines
 from .ui_status import app_title, notes_line, provider_summary, status_cell
-from .model_selection import pick_model_candidates
-from .task_builders import build_analysis_config
+from .model_selection import ROLE_CLASSIFY, rank_models
+from .probe_cache import load_probe_cache
+from .task_builders import build_analysis_config, _with_pin
 from .ui_details import render_details
 from .task_state import TaskState
 from .help_screen import HelpScreen
+from .doctor_screen import DoctorScreen
 from .ui_runtime import banner_for_state, count_statuses, derive_task_state, provider_problem
 from .item_mutations import mark_item_classifying, mark_item_scanning, reset_item_to_pending, unclassify_item
 from .open_file import open_with_default_app
@@ -64,6 +66,7 @@ class ArchiverApp(App):
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("f1", "help", "Help", show=True),
         Binding("f2", "settings", "Settings", show=True),
+        Binding("d", "doctor", "Doctor", show=True),
         Binding("ctrl+r", "scan", "Reload dir", show=False),
         Binding("S", "extract_pending", "Scan pending", show=False),
         Binding("C", "classify_batch", "Classify scanned", show=False),
@@ -137,23 +140,6 @@ class ArchiverApp(App):
 
     def _save_app_config(self) -> None:
         save_config(app_config_from_settings(self.settings))
-
-    def _ordered_classify_models(self, models: tuple[str, ...]) -> tuple[str, ...]:
-        prefer = (
-            "ds4:deepseek-v4-flash",
-            "ds4:deepseek-v4-pro",
-            "qwen2.5:3b-instruct",
-            "qwen3:4b",
-            "phi4-mini:latest",
-            "phi4-mini",
-            "gemma3:1b",
-            "qwen3.5:4b",
-            "ministral-3:3b",
-            "gemma2:2b",
-        )
-        ordered = [model for model in prefer if model in models]
-        ordered.extend(model for model in models if model not in ordered)
-        return tuple(ordered)
 
     async def _post_setup(self) -> None:
         await self._run_discovery()
@@ -318,19 +304,15 @@ class ArchiverApp(App):
             return
         if self._scan_task.running:
             return
-        available_models: tuple[str, ...] = ()
+        available_models = self._discovery.models if self._discovery else ()
         provider_info = "Provider: (not detected yet)"
         if self._discovery:
-            provider_info = self._provider_line or "Provider: ollama (missing) • models: 0"
-            merged: list[str] = []
-            for p in self._discovery.providers:
-                if p.available and p.models:
-                    merged.extend(p.models)
-            available_models = tuple(merged)
+            provider_info = self._provider_line or "Provider: nessuno raggiungibile • models: 0"
             if available_models:
-                shown = ", ".join(available_models[:8])
-                if len(available_models) > 8:
-                    shown += f" (+{len(available_models) - 8})"
+                ids = [m.id for m in available_models]
+                shown = ", ".join(ids[:8])
+                if len(ids) > 8:
+                    shown += f" (+{len(ids) - 8})"
                 provider_info = f"{provider_info}\nModels: {shown}"
         self.push_screen(
             SettingsScreen(
@@ -339,13 +321,11 @@ class ArchiverApp(App):
                 facts_model=self.settings.facts_model,
                 classify_model=self.settings.classify_model,
                 vision_model=self.settings.vision_model,
-                vision_model_fallback=self.settings.vision_model_fallback,
                 filename_separator=self.settings.filename_separator,
                 ocr_mode=self.settings.ocr_mode,
                 undated_folder_name=self.settings.undated_folder_name,
                 archive_root=self.settings.archive_root,
-                ds4_base_url=self.settings.ds4_base_url,
-                ollama_base_url=self.settings.ollama_base_url,
+                providers=self.settings.providers,
                 available_models=available_models,
                 provider_info=provider_info,
             ),
@@ -353,14 +333,23 @@ class ArchiverApp(App):
             wait_for_dismiss=False,
         )
 
+    async def action_doctor(self) -> None:
+        if self._analysis_task.running or self._archive_task.running or self._scan_task.running:
+            return
+        self.push_screen(
+            DoctorScreen(
+                settings=self.settings,
+                discovery=self._discovery,
+                on_refresh=lambda: self.run_worker(self._run_discovery()),
+            ),
+            wait_for_dismiss=False,
+        )
+
     async def action_help(self) -> None:
         self.push_screen(HelpScreen(), wait_for_dismiss=False)
 
     def _on_settings_done(self, result: SettingsResult) -> None:
-        endpoints_changed = (
-            result.ds4_base_url != self.settings.ds4_base_url
-            or result.ollama_base_url != self.settings.ollama_base_url
-        )
+        endpoints_changed = result.providers != self.settings.providers
         self.settings = replace(
             self.settings,
             output_language=result.output_language,
@@ -368,13 +357,11 @@ class ArchiverApp(App):
             facts_model=result.facts_model,
             classify_model=result.classify_model,
             vision_model=result.vision_model,
-            vision_model_fallback=result.vision_model_fallback,
             archive_root=result.archive_root,
             filename_separator=result.filename_separator,
             ocr_mode=result.ocr_mode,
             undated_folder_name=result.undated_folder_name,
-            ds4_base_url=result.ds4_base_url,
-            ollama_base_url=result.ollama_base_url,
+            providers=result.providers,
         )
         self.query_one("#arc", Static).update(f"Archive: {self.settings.archive_root}")
         self._save_app_config()
@@ -403,13 +390,12 @@ class ArchiverApp(App):
 
         def do_discover() -> DiscoveryResult:
             return discover_providers(
-                ollama_base_url=self.settings.ollama_base_url,
-                ds4_base_url=self.settings.ds4_base_url,
+                self.settings.providers, probe_cache=load_probe_cache()
             )
 
         worker = self.run_worker(do_discover, thread=True)
         self._discovery = await worker.wait()
-        self._provider_line = provider_summary(self._discovery, self.settings, model_picker=pick_model_candidates)
+        self._provider_line = provider_summary(self._discovery, self.settings)
         self.title = app_title()
         self._render_notes()
 
@@ -551,14 +537,9 @@ class ArchiverApp(App):
         if not self._discovery:
             return
         taxonomy, _ = parse_taxonomy_lines(self.settings.get_taxonomy_lines())
-        text_models, _ = pick_model_candidates(self._discovery)
-        text_models = self._ordered_classify_models(text_models)
-        if self.settings.classify_model and self.settings.classify_model != "auto":
-            text_models = (
-                self.settings.classify_model,
-                *tuple(m for m in text_models if m != self.settings.classify_model),
-            )
-        model = text_models[0] if text_models else "gemma3:1b"
+        ranked = rank_models(self._discovery.models if self._discovery else (), ROLE_CLASSIFY)
+        text_models = _with_pin(ranked, self.settings.classify_model)
+        model = text_models[0] if text_models else ""
 
         targets = [it for it in self._scan_items if it.status == "scanned"]
         if not targets:
@@ -607,8 +588,7 @@ class ArchiverApp(App):
                 res = normalize_items_with_fallback(
                     items=targets,
                     models=text_models,
-                    base_url=self.settings.ollama_base_url,
-                    ds4_base_url=self.settings.ds4_base_url,
+                    provider_urls=self.settings.providers,
                     taxonomy=taxonomy,
                     output_language=self.settings.output_language,
                     filename_separator=self.settings.filename_separator,
@@ -895,14 +875,9 @@ class ArchiverApp(App):
             return
 
         taxonomy, _ = parse_taxonomy_lines(self.settings.get_taxonomy_lines())
-        text_models, _ = pick_model_candidates(self._discovery)
-        text_models = self._ordered_classify_models(text_models)
-        if self.settings.classify_model and self.settings.classify_model != "auto":
-            text_models = (
-                self.settings.classify_model,
-                *tuple(m for m in text_models if m != self.settings.classify_model),
-            )
-        model = text_models[0] if text_models else "gemma3:1b"
+        ranked = rank_models(self._discovery.models if self._discovery else (), ROLE_CLASSIFY)
+        text_models = _with_pin(ranked, self.settings.classify_model)
+        model = text_models[0] if text_models else ""
 
         key = str(it.path)
         self._scan_items[row_index] = mark_item_classifying(it)
@@ -940,8 +915,7 @@ class ArchiverApp(App):
             res = normalize_items_with_fallback(
                 items=[it],
                 models=text_models,
-                base_url=self.settings.ollama_base_url,
-                ds4_base_url=self.settings.ds4_base_url,
+                provider_urls=self.settings.providers,
                 taxonomy=taxonomy,
                 output_language=self.settings.output_language,
                 filename_separator=self.settings.filename_separator,

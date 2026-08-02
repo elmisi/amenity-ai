@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.containers import Container
@@ -9,12 +10,16 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, Static, TextArea
 
 from .archive_picker_screen import ArchivePickerResult, ArchivePickerScreen
-from .llm_router import DS4_PREFIX
+from .model_selection import ROLE_CLASSIFY, ROLE_FACTS, ROLE_VISION, rank_models
+from .providers import PROVIDER_NAMES, PROVIDERS
 from .taxonomy import (
     get_default_taxonomy_for_language,
     get_effective_language,
     parse_taxonomy_lines,
 )
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .discovery import ModelInfo
 
 
 @dataclass(frozen=True)
@@ -24,13 +29,11 @@ class SettingsResult:
     facts_model: str
     classify_model: str
     vision_model: str
-    vision_model_fallback: str
     filename_separator: str
     ocr_mode: str
     undated_folder_name: str
     archive_root: Path
-    ds4_base_url: str
-    ollama_base_url: str
+    providers: dict[str, str]
 
 
 class SettingsScreen(ModalScreen[SettingsResult]):
@@ -42,10 +45,8 @@ class SettingsScreen(ModalScreen[SettingsResult]):
     #taxonomy_label { height: auto; padding: 1 0 0 0; }
     #taxonomy { height: 1fr; border: round $accent; }
     #errors { height: auto; color: $error; }
-    #ds4_label { height: auto; padding: 1 0 0 0; }
-    #ds4_url { height: 3; }
-    #ollama_label { height: auto; padding: 1 0 0 0; }
-    #ollama_url { height: 3; }
+    .provider_label { height: auto; padding: 1 0 0 0; }
+    .provider_url { height: 3; }
     """
 
     BINDINGS = [
@@ -65,35 +66,31 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         facts_model: str,
         classify_model: str,
         vision_model: str,
-        vision_model_fallback: str,
         filename_separator: str,
         ocr_mode: str,
         undated_folder_name: str,
         archive_root: Path,
-        ds4_base_url: str,
-        ollama_base_url: str,
-        available_models: tuple[str, ...],
+        providers: dict[str, str],
+        available_models: tuple["ModelInfo", ...],
         provider_info: str,
     ) -> None:
         super().__init__()
         self._provider_info = provider_info.strip()
-        self._ds4_base_url = (ds4_base_url or "").strip()
-        self._ollama_base_url = (ollama_base_url or "").strip() or "http://localhost:11434"
+        self._providers = {name: (providers or {}).get(name, "") for name in PROVIDER_NAMES}
         self._output_language = output_language if output_language in {"auto", "it", "en"} else "auto"
         self._taxonomies: dict[str, tuple[str, ...]] = dict(taxonomies) if taxonomies else {}
         self._facts_model = facts_model or "auto"
         self._classify_model = classify_model or "auto"
         self._vision_model = vision_model or "auto"
-        self._vision_model_fallback = vision_model_fallback or "none"
         self._archive_root = archive_root
         self._available_models = available_models
         self._filename_separator = filename_separator if filename_separator in {"space", "underscore", "dash"} else "space"
         self._ocr_mode = ocr_mode if ocr_mode in {"fast", "balanced", "high"} else "balanced"
         self._undated_folder_name = undated_folder_name.strip() if (undated_folder_name or "").strip() else "undated"
 
-        self._text_options = ("auto",) + tuple(self._filter_text_models(available_models))
-        self._vision_options = ("auto",) + tuple(self._filter_vision_models(available_models))
-        self._vision_fallback_options = ("none", "auto") + tuple(self._filter_vision_models(available_models))
+        self._facts_options = ("auto",) + rank_models(available_models, ROLE_FACTS)
+        self._classify_options = ("auto",) + rank_models(available_models, ROLE_CLASSIFY)
+        self._vision_options = ("auto",) + rank_models(available_models, ROLE_VISION)
         self._lang_options = ("auto", "it", "en")
         self._sep_options = ("space", "underscore", "dash")
         self._ocr_options = ("fast", "balanced", "high")
@@ -126,10 +123,13 @@ class SettingsScreen(ModalScreen[SettingsResult]):
             id="intro",
         )
         yield Static(self._provider_info or "Provider: (unknown)", id="provider", markup=False)
-        yield Static("ds4 endpoint (OpenAI-compatible, empty = disabled):", id="ds4_label")
-        yield Input(value=self._ds4_base_url, placeholder="http://localhost:8000", id="ds4_url")
-        yield Static("ollama endpoint (empty = http://localhost:11434):", id="ollama_label")
-        yield Input(value=self._ollama_base_url, placeholder="http://localhost:11434", id="ollama_url")
+        for spec in PROVIDERS:
+            placeholder = spec.default_url or "vuoto = disabilitato"
+            yield Static(f"{spec.name} endpoint ({placeholder}):",
+                         classes="provider_label", id=f"{spec.name}_label")
+            yield Input(value=self._providers.get(spec.name, ""),
+                        placeholder=placeholder,
+                        classes="provider_url", id=f"{spec.name}_url")
         yield OptionList(*self._render_options(), id="options")
         lang = self._get_effective_lang()
         yield Static(f"Taxonomy [{lang.upper()}] (one category per line): name | description | examples", id="taxonomy_label")
@@ -152,18 +152,15 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         self.query_one("#taxonomy", TextArea).text = "\n".join(default_lines).strip() + "\n"
         self.query_one("#errors", Static).update("")
 
-    def _current_ds4_url(self) -> str:
-        try:
-            return self.query_one("#ds4_url", Input).value.strip()
-        except Exception:
-            return self._ds4_base_url
-
-    def _current_ollama_url(self) -> str:
-        try:
-            value = self.query_one("#ollama_url", Input).value.strip()
-        except Exception:
-            return self._ollama_base_url
-        return value or "http://localhost:11434"
+    def _current_provider_urls(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for spec in PROVIDERS:
+            try:
+                value = self.query_one(f"#{spec.name}_url", Input).value.strip()
+            except Exception:
+                value = self._providers.get(spec.name, "")
+            out[spec.name] = value or spec.default_url
+        return out
 
     def action_cancel(self) -> None:
         self.dismiss(
@@ -173,13 +170,11 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 facts_model=self._facts_model,
                 classify_model=self._classify_model,
                 vision_model=self._vision_model,
-                vision_model_fallback=self._vision_model_fallback,
                 filename_separator=self._filename_separator,
                 ocr_mode=self._ocr_mode,
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
-                ds4_base_url=self._current_ds4_url(),
-                ollama_base_url=self._current_ollama_url(),
+                providers=self._current_provider_urls(),
             )
         )
 
@@ -205,40 +200,38 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 event.stop()
 
     def _activate_option(self, idx: int) -> None:
-        if idx in {0, 1, 2, 3, 4, 6, 7}:
+        if idx in {0, 1, 2, 3, 5, 6}:
             self._cycle_option(idx, forward=True)
             return
-        if idx == 5:
+        if idx == 4:
             self.app.push_screen(
                 ArchivePickerScreen(archive_root=self._archive_root),
                 callback=self._on_archive_picked,
                 wait_for_dismiss=False,
             )
             return
-        if idx == 8:
+        if idx == 7:
             self._cycle_undated_name()
             return
-        if idx == 9:
+        if idx == 8:
             self.action_focus_taxonomy()
             return
 
     def _cycle_option(self, idx: int, *, forward: bool) -> None:
         if idx == 0:
-            self._facts_model = self._cycle_value(self._facts_model, self._text_options, forward=forward)
+            self._facts_model = self._cycle_value(self._facts_model, self._facts_options, forward=forward)
         elif idx == 1:
-            self._classify_model = self._cycle_value(self._classify_model, self._text_options, forward=forward)
+            self._classify_model = self._cycle_value(self._classify_model, self._classify_options, forward=forward)
         elif idx == 2:
             self._vision_model = self._cycle_value(self._vision_model, self._vision_options, forward=forward)
         elif idx == 3:
-            self._vision_model_fallback = self._cycle_value(self._vision_model_fallback, self._vision_fallback_options, forward=forward)
-        elif idx == 4:
             # Language change: save current taxonomy, switch, load new
             self._save_textarea_to_current_lang()
             self._output_language = self._cycle_value(self._output_language, self._lang_options, forward=forward)
             self._update_taxonomy_display()
-        elif idx == 6:
+        elif idx == 5:
             self._filename_separator = self._cycle_value(self._filename_separator, self._sep_options, forward=forward)
-        elif idx == 7:
+        elif idx == 6:
             self._ocr_mode = self._cycle_value(self._ocr_mode, self._ocr_options, forward=forward)
         else:
             return
@@ -282,7 +275,6 @@ class SettingsScreen(ModalScreen[SettingsResult]):
             f"Facts model: {self._facts_model}",
             f"Classify model: {self._classify_model}",
             f"Vision model: {self._vision_model}",
-            f"Vision fallback: {self._vision_model_fallback}",
             f"Output language: {self._output_language}",
             f"Archive folder: {self._archive_root}",
             f"Filename separator: {self._filename_separator}",
@@ -308,13 +300,11 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 facts_model=self._facts_model,
                 classify_model=self._classify_model,
                 vision_model=self._vision_model,
-                vision_model_fallback=self._vision_model_fallback,
                 filename_separator=self._filename_separator,
                 ocr_mode=self._ocr_mode,
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
-                ds4_base_url=self._current_ds4_url(),
-                ollama_base_url=self._current_ollama_url(),
+                providers=self._current_provider_urls(),
             )
         )
 
@@ -326,24 +316,3 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         if forward:
             return values[(i + 1) % len(values)]
         return values[(i - 1) % len(values)]
-
-    @staticmethod
-    def _filter_vision_models(models: tuple[str, ...]) -> list[str]:
-        out: list[str] = []
-        for m in models:
-            ml = m.lower()
-            if ml.startswith(DS4_PREFIX):
-                continue
-            if any(v in ml for v in ("vision", "llava", "moondream", "minicpm", "bakllava")):
-                out.append(m)
-        return out
-
-    @staticmethod
-    def _filter_text_models(models: tuple[str, ...]) -> list[str]:
-        out: list[str] = []
-        for m in models:
-            ml = m.lower()
-            if any(v in ml for v in ("vision", "llava", "moondream", "minicpm", "bakllava")):
-                continue
-            out.append(m)
-        return out

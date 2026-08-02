@@ -28,8 +28,8 @@ The long-term goal is to help users turn a “messy folder” into a clean archi
 
 ## Non-goals (for now)
 - No cloud/remote providers are supported. Everything runs on the user's own
-  machines: Ollama locally, plus optionally any OpenAI-compatible server on the
-  local network ("ds4", configured via Settings → ds4 endpoint; text-only).
+  machines: Ollama, vLLM, or any other OpenAI-compatible server, each reachable
+  on the local network and each configured with a single URL.
 - No automatic “approve plan and apply” flow yet (moving is manual).
 
 ## UX Requirements (TUI)
@@ -57,9 +57,10 @@ Configurable items include:
 - archive folder
 - output language (`auto`, `it`, `en`)
 - taxonomy (categories defined by the user)
-- text/vision model selection (Ollama models)
-- LLM endpoints: Ollama URL (default `http://localhost:11434`) and the optional
-  OpenAI-compatible ds4 URL — either may point at another machine on the local network
+- facts/classify/vision model selection, from the models actually discovered
+- LLM endpoints: one URL per provider (`ollama`, default `http://localhost:11434`;
+  `vllm`; `ds4`) — any of them may point at another machine on the local network,
+  and an empty URL disables that provider. Models are discovered, not configured
 - filename separator (space vs underscore)
 - OCR mode
 

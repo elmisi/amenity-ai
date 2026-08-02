@@ -50,14 +50,33 @@ After running Scan/Classify on a folder, you can print a short timing summary fr
 amenity-ai report --source /path/to/folder
 ```
 
+## Doctor
+
+Checks whether the configured providers are reachable and whether you actually have
+a semantic model and a vision model to work with:
+
+```bash
+amenity-ai doctor
+```
+
+If something is missing it offers a short list of models with their sizes and can install
+them for you. The download happens on the machine hosting Ollama, not on the one running
+amenity-ai — point the endpoint at another host and the gigabytes land there. Press `x` to
+cancel a download, `r` to re-check, `Esc` to close. The exit code is non-zero when a check
+fails, so the command is usable in a script.
+
+The same screen is available inside the TUI with `d`.
+
 ## Settings
 
 You can change:
 - output language (`auto`, `it`, `en`)
 - taxonomy (allowed categories)
-- models (facts / classify / vision / vision fallback), archive folder, filename separator, OCR mode
-- ollama endpoint (default `http://localhost:11434`, may be a remote host)
-- ds4 endpoint (OpenAI-compatible server, optional)
+- models (facts / classify / vision), archive folder, filename separator, OCR mode
+- one endpoint per provider: `ollama` (default `http://localhost:11434`), `vllm`, `ds4`.
+  Any of them may point at another machine; leave one empty to disable it
+
+You only configure the endpoints — amenity-ai discovers the available models by itself.
 
 Press `F2` in the TUI to open Settings. Configuration is stored in `~/.config/amenity-stuff/config.json`.
 
@@ -116,26 +135,27 @@ RTF is supported without dependencies via a naive fallback, but you get better r
 - Ubuntu / Linux Mint:
   - `sudo apt-get install unrtf`
 
-## LLM Provider
+## LLM Providers
 
-On startup the app probes the configured endpoints:
-- Ollama — `GET /api/tags` on the configured URL (default `http://localhost:11434`)
-- the ds4 endpoint — `GET /v1/models`, if one is configured (see below)
+Three providers are supported. You configure one URL each and nothing more — on startup
+the app queries them in parallel and discovers which models are available:
 
-Both servers may run on another machine on your local network: set their URLs in
-Settings (`F2`). Nothing is sent outside the machines you point the app at.
+| provider | endpoint queried | notes |
+|---|---|---|
+| `ollama` | `GET /api/tags` | default `http://localhost:11434`; the only one that can install models |
+| `vllm` | `GET /v1/models` | any vLLM server; empty by default |
+| `ds4` | `GET /v1/models` | any other OpenAI-compatible server (llama.cpp, …); empty by default |
 
-Models: the app uses a text model and (for images) a vision model; exact model names are configurable.
+All three may run on another machine on your local network. Leave a URL empty to disable
+that provider. Nothing is sent outside the machines you point the app at.
 
-### Additional OpenAI-compatible endpoint (ds4)
+Models carry their provider as a prefix — `ollama:qwen3:8b`, `vllm:…`, `ds4:…` — so you can
+always tell where one comes from. With models set to `auto`, candidates are ordered by
+provider priority (`vllm` first, since it serves concurrent requests, then `ollama`, then
+`ds4`), then by a size band suited to the job: small and fast for extracting facts, mid-size
+for classification, small for vision.
 
-Besides Ollama, you can point amenity-ai at any local OpenAI-compatible server
-(e.g. vLLM, llama.cpp server). Set the endpoint in Settings (`F2`) →
-"ds4 endpoint", e.g. `http://localhost:8000`. Leave it empty to disable.
-
-Models from that server appear with the `ds4:` prefix (e.g. `ds4:deepseek-v4-flash`)
-and are preferred for facts/classify when models are set to `auto`. They are
-text-only: images always use Ollama vision models.
+Run `amenity-ai doctor` to see what was found and what is missing.
 
 ## Scan (MVP)
 
@@ -166,6 +186,7 @@ See `EXTRACTORS.md` for details on how each format is handled and how to add new
 - `r` reset selected row (back to `pending`, invalidate cache)
 - `R` reset all + clear cache (confirmation)
 - `F2` settings
+- `d` doctor (providers and models)
 - `q` or `ctrl+c` quit
 
 During extraction/classification, status transitions and the UI remains interactive while results update row by row.
