@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.2] - 2026-08-02
+
+- Remove an analysis path that no code reached: `analyze_item` had no callers
+  anywhere in the repository, and with it went `_try_text_models`,
+  `_classify_from_text`, the `AnalysisResult` dataclass and the classify prompt
+  they were the only users of. Classification runs through `normalizer.py`,
+  which has its own prompt. 327 lines of unreachable code, no behaviour change.
+
 ## [0.12.1] - 2026-08-02
 
 - Stop gluing ordinary short words together in proposed filenames. The repair

@@ -9,20 +9,10 @@ from typing import Mapping, Optional
 
 from .llm_router import generate
 
-from .extractors.image import extract_image_smart, ImageExtractionResult
+from .extractors.image import extract_image_smart
 from .extractors.registry import extract_with_meta
-from .pdf_extract import extract_pdf_text_with_meta
 from .scanner import ScanItem
-from .taxonomy import DEFAULT_TAXONOMY_LINES, Taxonomy, parse_taxonomy_lines, taxonomy_to_prompt_block
-from .utils_filename import (
-    cleanup_generic_words_in_name,
-    ensure_extension,
-    fallback_name_from_summary,
-    name_separator,
-    normalize_separators,
-    propose_name_from_summary_and_facts,
-    sanitize_name,
-)
+from .taxonomy import DEFAULT_TAXONOMY_LINES, Taxonomy, parse_taxonomy_lines
 from .utils_json import extract_json_dict
 from .utils_parsing import (
     coerce_date_candidates,
@@ -35,7 +25,6 @@ from .utils_parsing import (
     split_and_repair_tokens,
 )
 from .prompts import (
-    build_classify_prompt,
     build_facts_extraction_prompt,
     build_json_repair_prompt,
 )
@@ -58,26 +47,6 @@ class AnalysisConfig:
     def __post_init__(self) -> None:
         if self.provider_urls is None:
             object.__setattr__(self, "provider_urls", {})
-
-
-@dataclass(frozen=True)
-class AnalysisResult:
-    status: str
-    reason: Optional[str] = None
-    category: Optional[str] = None
-    reference_year: Optional[str] = None
-    proposed_name: Optional[str] = None
-    summary: Optional[str] = None
-    confidence: Optional[float] = None
-    model_used: Optional[str] = None
-    summary_long: Optional[str] = None
-    facts_json: Optional[str] = None
-    llm_raw_output: Optional[str] = None
-    extract_method: Optional[str] = None
-    extract_time_s: Optional[float] = None
-    llm_time_s: Optional[float] = None
-    ocr_time_s: Optional[float] = None
-    ocr_mode: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -283,7 +252,6 @@ def _content_excerpt_for_llm(text: str, *, max_chars: int = 10000) -> str:
 # - _STOPWORDS -> utils_parsing.STOPWORDS
 # - _GENERIC_NAME_TOKENS -> utils_parsing.GENERIC_NAME_TOKENS
 # - _cleanup_generic_words_in_name -> utils_filename.cleanup_generic_words_in_name
-# - _fallback_name_from_summary -> utils_filename.fallback_name_from_summary
 # - _LEGAL_SUFFIXES_RE -> utils_parsing.LEGAL_SUFFIXES_RE
 # - _short_entity -> utils_parsing.short_entity
 # - _MONTHS -> utils_parsing.MONTHS
@@ -291,178 +259,6 @@ def _content_excerpt_for_llm(text: str, *, max_chars: int = 10000) -> str:
 # - _extract_amount_token -> utils_parsing.extract_amount_token
 # - _propose_name_from_summary_and_facts -> utils_filename.propose_name_from_summary_and_facts
 
-
-def _classify_from_text(
-    *,
-    model: str,
-    content: str,
-    filename: str,
-    mtime_iso: str,
-    provider_urls: Mapping[str, str],
-    reference_year_hint: Optional[str],
-    category_hint: Optional[str],
-    output_language: str,
-    taxonomy: Taxonomy,
-    filename_separator: str,
-) -> AnalysisResult:
-    categories = taxonomy.allowed_names
-    taxonomy_block = taxonomy_to_prompt_block(taxonomy)
-    prompt = build_classify_prompt(
-        categories=list(categories),
-        taxonomy_block=taxonomy_block,
-        filename=filename,
-        mtime_iso=mtime_iso,
-        reference_year_hint=reference_year_hint,
-        category_hint=category_hint,
-        content=content,
-        output_language=output_language,
-    )
-    try:
-        gen = generate(
-            model=model,
-            prompt=prompt,
-            provider_urls=provider_urls,
-            timeout_s=180.0,
-            response_format=_JSON_RESPONSE_FORMAT,
-            think=False,
-            keep_alive="5m",
-            options=_CLASSIFY_GENERATE_OPTIONS,
-        )
-    except Exception as exc:  # noqa: BLE001 (MVP: best-effort)
-        return AnalysisResult(status="error", reason=f"LLM errore: {type(exc).__name__}", model_used=model)
-    if gen.error:
-        return AnalysisResult(status="error", reason=f"LLM errore: {gen.error}", model_used=model)
-    out = gen.response
-    data = _extract_json(out)
-    llm_raw_output: Optional[str] = None
-    if not isinstance(data, dict):
-        llm_raw_output = _truncate_raw_output(out)
-        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, provider_urls=provider_urls)
-        if repaired:
-            data = _extract_json(repaired)
-    if not isinstance(data, dict):
-        return AnalysisResult(
-            status="skipped",
-            reason="Unparseable output (JSON)",
-            model_used=model,
-            llm_raw_output=llm_raw_output,
-        )
-
-    skip_reason = data.get("skip_reason")
-    if isinstance(skip_reason, str) and skip_reason.strip():
-        return AnalysisResult(status="skipped", reason=skip_reason.strip(), model_used=model)
-
-    category = data.get("category")
-    if not isinstance(category, str) or category not in categories:
-        category = "unknown"
-
-    reference_year = data.get("reference_year")
-    if reference_year is not None and not isinstance(reference_year, str):
-        reference_year = None
-    if isinstance(reference_year, str) and not is_year(reference_year.strip()):
-        reference_year = None
-
-    proposed_name = data.get("proposed_name")
-    if not isinstance(proposed_name, str) or not proposed_name.strip():
-        return AnalysisResult(status="skipped", reason="Missing proposed name", model_used=model)
-
-    proposed_name = ensure_extension(sanitize_name(proposed_name), filename)
-    proposed_name = cleanup_generic_words_in_name(proposed_name=proposed_name, original_filename=filename)
-    proposed_name = normalize_separators(proposed_name, sep=filename_separator)
-
-    summary = data.get("summary")
-    if not isinstance(summary, str):
-        summary = None
-    summary_long = data.get("summary_long")
-    if not isinstance(summary_long, str) or not summary_long.strip():
-        llm_raw_output = llm_raw_output or _truncate_raw_output(out)
-        return FactsResult(
-            status="skipped",
-            reason="Missing summary_long",
-            model_used=model,
-            llm_raw_output=llm_raw_output,
-        )
-
-    facts = {
-        "language": data.get("language") if isinstance(data.get("language"), str) else None,
-        "doc_type": data.get("doc_type") if isinstance(data.get("doc_type"), str) else None,
-        "tags": coerce_list(data.get("tags")),
-        "people": coerce_list(data.get("people")),
-        "organizations": coerce_list(data.get("organizations")),
-        "date_candidates": coerce_date_candidates(data.get("date_candidates")),
-    }
-    facts_json = json.dumps(facts, ensure_ascii=False, sort_keys=True)
-
-    confidence = data.get("confidence")
-    if isinstance(confidence, (int, float)):
-        conf = float(confidence)
-    else:
-        conf = None
-
-    if conf is not None and conf < 0.35:
-        return AnalysisResult(
-            status="skipped",
-            reason="Low confidence",
-            confidence=conf,
-            model_used=model,
-            llm_raw_output=llm_raw_output,
-        )
-
-    # If the model produced a generic/low-signal name, rebuild it from summary+facts.
-    if summary_long:
-        orgs = facts.get("organizations") if isinstance(facts.get("organizations"), list) else []
-        org_hint = short_entity(str(orgs[0])) if orgs else ""
-        low_signal = len(Path(proposed_name).stem) < 18 or name_token_count(proposed_name) < 4
-        missing_entity = bool(org_hint) and (org_hint.lower().split()[0] not in proposed_name.lower())
-        if low_signal or missing_entity:
-            better = propose_name_from_summary_and_facts(
-                summary_long=summary_long,
-                facts=facts,
-                reference_year=reference_year,
-                original_filename=filename,
-                filename_separator=filename_separator,
-            )
-            if better:
-                proposed_name = better
-
-    # If the proposed name is too short / low-signal, derive one from summary.
-    if len(Path(proposed_name).stem) < 12 or name_token_count(proposed_name) < 3:
-        proposed_name = fallback_name_from_summary(summary=summary, original_filename=filename, sep=filename_separator)
-        proposed_name = cleanup_generic_words_in_name(proposed_name=proposed_name, original_filename=filename)
-        proposed_name = normalize_separators(proposed_name, sep=filename_separator)
-
-    # If category is unknown, fall back to hint.
-    if category == "unknown" and category_hint in categories:
-        category = category_hint
-
-    # If the model didn't provide a usable year, fall back to filename/path hint.
-    hint = reference_year_hint if (reference_year_hint and is_year(reference_year_hint)) else None
-    if (not reference_year) and hint:
-        reference_year = hint
-
-    # If still missing, allow using a year embedded in the proposed name.
-    if not reference_year:
-        year_from_name = _extract_year_hint_from_path(Path(proposed_name))
-        if year_from_name and is_year(year_from_name):
-            reference_year = year_from_name
-
-    # If both exist but differ, trust content only when confidence is sufficiently high.
-    if reference_year and hint and reference_year != hint:
-        if conf is None or conf < 0.6:
-            reference_year = hint
-
-    return AnalysisResult(
-        status="ready",
-        category=category,
-        reference_year=reference_year,
-        proposed_name=proposed_name,
-        summary=(summary or "").strip()[:200] or None,
-        confidence=conf,
-        model_used=model,
-        summary_long=(summary_long or "").strip()[:4000] or None,
-        facts_json=facts_json,
-        llm_raw_output=llm_raw_output,
-    )
 
 def _text_model_candidates(cfg: AnalysisConfig) -> tuple[str, ...]:
     if cfg.text_models:
@@ -474,35 +270,6 @@ def _vision_model_candidates(cfg: AnalysisConfig) -> tuple[str, ...]:
     if cfg.vision_models:
         return cfg.vision_models
     return (cfg.vision_model,)
-
-
-def _try_text_models(
-    *,
-    cfg: AnalysisConfig,
-    content: str,
-    filename: str,
-    mtime_iso: str,
-    reference_year_hint: Optional[str],
-    category_hint: Optional[str],
-) -> AnalysisResult:
-    last: AnalysisResult | None = None
-    for model in _text_model_candidates(cfg):
-        res = _classify_from_text(
-            model=model,
-            content=content,
-            filename=filename,
-            mtime_iso=mtime_iso,
-            provider_urls=cfg.provider_urls,
-            reference_year_hint=reference_year_hint,
-            category_hint=category_hint,
-            output_language=cfg.output_language,
-            taxonomy=cfg.taxonomy,
-            filename_separator=cfg.filename_separator,
-        )
-        last = res
-        if res.status == "ready":
-            return res
-    return last or AnalysisResult(status="error", reason="No text models available")
 
 
 def _extract_facts_from_text(
@@ -732,132 +499,3 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
     return skipped("Unsupported file type")
 
 
-def analyze_item(item: ScanItem, *, config: AnalysisConfig) -> AnalysisResult:
-    path = item.path
-    if item.status != "pending":
-        return AnalysisResult(status=item.status, reason=item.reason)
-
-    filename_year_hint = _extract_year_hint_from_path(path)
-
-    def skipped(reason: str) -> AnalysisResult:
-        return AnalysisResult(
-            status="skipped",
-            reason=reason,
-            category="unknown",
-            reference_year=filename_year_hint,
-            proposed_name=path.name,
-        )
-
-    def skipped_with_year(reason: str, year_hint: Optional[str]) -> AnalysisResult:
-        return AnalysisResult(
-            status="skipped",
-            reason=reason,
-            category="unknown",
-            reference_year=year_hint,
-            proposed_name=path.name,
-        )
-
-    if item.kind == "pdf":
-        text, reason, meta = extract_pdf_text_with_meta(path, ocr_mode=config.ocr_mode)
-        if not text:
-            return skipped(reason or "No extractable PDF text")
-        content_year_hint = _extract_year_hint_from_text(text)
-        effective_year_hint = filename_year_hint or content_year_hint
-        category_hint = _category_hint_from_signals(path=path, text=text)
-        t0 = time.perf_counter()
-        res = _try_text_models(
-            cfg=config,
-            content=text,
-            filename=path.name,
-            mtime_iso=item.mtime_iso,
-            reference_year_hint=effective_year_hint,
-            category_hint=category_hint,
-        )
-        llm_elapsed = time.perf_counter() - t0
-        if meta:
-            res = replace(
-                res,
-                extract_method=meta.method,
-                extract_time_s=meta.extract_time_s,
-                ocr_time_s=meta.ocr_time_s,
-                ocr_mode=meta.ocr_mode,
-            )
-        res = replace(res, llm_time_s=llm_elapsed)
-        if res.status == "skipped":
-            return replace(
-                res,
-                category="unknown",
-                reference_year=res.reference_year or effective_year_hint,
-                proposed_name=path.name,
-            )
-        return res
-
-    if item.kind == "image":
-        effective_year_hint = filename_year_hint
-        category_hint = _category_hint_from_signals(path=path, text=None)
-        max_chars = 15000
-
-        # Smart extraction: vision first, OCR only if document detected
-        if config.output_language == "it":
-            vision_prompt = "Describe this image in one sentence in Italian."
-        else:
-            vision_prompt = "Describe this image in one sentence in English."
-
-        img_result = extract_image_smart(
-            path,
-            vision_models=tuple(_vision_model_candidates(config)),
-            vision_prompt=vision_prompt,
-            provider_urls=config.provider_urls,
-            ocr_mode=config.ocr_mode,
-            max_chars=max_chars,
-        )
-
-        if not img_result.content:
-            return skipped_with_year(img_result.error or "No content extracted from image", effective_year_hint)
-
-        # Extract year hint from OCR text if available
-        if img_result.method == "vision+ocr" and img_result.content and not img_result.content.startswith("IMAGE_CAPTION:"):
-            content_year_hint = _extract_year_hint_from_text(img_result.content)
-            effective_year_hint = effective_year_hint or content_year_hint
-
-        content = img_result.content
-        if img_result.method == "vision+ocr":
-            content = _content_excerpt_for_llm(img_result.content, max_chars=14000)
-
-        t0 = time.perf_counter()
-        res = _try_text_models(
-            cfg=config,
-            content=content,
-            filename=path.name,
-            mtime_iso=item.mtime_iso,
-            reference_year_hint=effective_year_hint,
-            category_hint=category_hint,
-        )
-        llm_elapsed = time.perf_counter() - t0
-
-        # Calculate total extract time
-        extract_time = img_result.vision_time_s
-        if img_result.ocr_time_s:
-            extract_time += img_result.ocr_time_s
-
-        res = replace(
-            res,
-            extract_method=img_result.method,
-            extract_time_s=extract_time,
-            ocr_time_s=img_result.ocr_time_s,
-            ocr_mode=config.ocr_mode if img_result.ocr_time_s else None,
-            llm_time_s=llm_elapsed,
-        )
-        if img_result.vision_model and res.model_used:
-            res = replace(res, model_used=f"{res.model_used} (vision: {img_result.vision_model})")
-
-        if res.status == "skipped":
-            return replace(
-                res,
-                category="unknown",
-                reference_year=res.reference_year or effective_year_hint,
-                proposed_name=path.name,
-            )
-        return res
-
-    return skipped_with_year("Unsupported file type", filename_year_hint)
