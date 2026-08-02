@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   too, which it previously did not. Measured on one photo through the whole
   pipeline: 168s to 17s, with an equivalent summary.
 
+### Fixed
+- Pictures that are not documents are no longer discarded. The facts prompt asked
+  a paper-document question, so a photo or a symbol came back with a perfectly
+  good description *and* a `skip_reason` saying there were no invoice-like
+  fields — and the whole answer was thrown away. Captions now yield a subject,
+  tags and a summary, so the file gets a real name instead of none.
+
 ### Changed
 - Model selection is driven by real metadata instead of three hardcoded
   preference lists: provider priority (`vllm > ollama > ds4`) first, then a size

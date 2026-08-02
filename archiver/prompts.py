@@ -133,6 +133,11 @@ Goal:
 - Do NOT classify or propose a filename in this step.
 - Prefer precision over brevity: if a value is present, copy it exactly; do not guess.
 - Keep generated text compact; avoid verbose explanations.
+- Content starting with IMAGE_CAPTION: is a picture, not a paper document. Describe WHAT IT
+  DEPICTS and set purpose to the subject itself (e.g. "celtic triskele symbol", "mountain
+  landscape"). Having no invoice-like fields is NORMAL for a picture: never set skip_reason
+  for that reason alone.
+- Use skip_reason ONLY when there is no readable content at all.
 - {language_line}
 
 Inputs:
