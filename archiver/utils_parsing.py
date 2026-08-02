@@ -161,11 +161,10 @@ LEGAL_SUFFIX_TOKENS: frozenset[str] = frozenset({
 # Token manipulation
 # ============================================================================
 
-# Words that should not be joined when repairing tokens
-JOIN_BLOCKLIST: frozenset[str] = frozenset({
-    "of", "the", "and", "or",
-    "di", "da", "del", "della", "dei", "delle",
-})
+# Words that should not be joined when repairing tokens. STOPWORDS already
+# lists the function words of both languages, so keeping a second, shorter
+# copy here only made the repair fire on the words it was missing.
+JOIN_BLOCKLIST: frozenset[str] = STOPWORDS
 
 
 def split_tokens(text: str) -> list[str]:
@@ -179,6 +178,22 @@ def split_tokens(text: str) -> list[str]:
     return out
 
 
+def _looks_like_a_broken_word(a: str, b: str) -> bool:
+    """True when `a` and `b` look like one word split by a stray separator.
+
+    The artifact repaired here is "Mi_iti" for "Misiti": a short CAPITALISED
+    fragment followed by a lowercase tail. Length alone does not identify it —
+    "via roma", "tre spirali" and "per il" are short too, and gluing them
+    corrupts the name for good. A capitalised head with a lowercase tail is
+    the part that cannot be two ordinary words.
+    """
+    if not (a.isalpha() and b.isalpha()):
+        return False
+    if len(a) > 3 or a.lower() in JOIN_BLOCKLIST:
+        return False
+    return a[:1].isupper() and a[1:].islower() and b.islower()
+
+
 def split_and_repair_tokens(stem: str) -> list[str]:
     """Split a filename stem into tokens and repair common OCR/encoding artifacts.
 
@@ -188,10 +203,8 @@ def split_and_repair_tokens(stem: str) -> list[str]:
 
     i = 0
     while i < len(tokens) - 1:
-        a = tokens[i]
-        b = tokens[i + 1]
-        if a.isalpha() and b.isalpha() and b[:1].islower() and len(a) <= 3 and a.lower() not in JOIN_BLOCKLIST:
-            tokens[i] = a + b
+        if _looks_like_a_broken_word(tokens[i], tokens[i + 1]):
+            tokens[i] = tokens[i] + tokens[i + 1]
             del tokens[i + 1]
             continue
         i += 1

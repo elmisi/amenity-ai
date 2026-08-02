@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.1] - 2026-08-02
+
+- Stop gluing ordinary short words together in proposed filenames. The repair
+  that fixes a word broken by a stray separator ("Mi_iti" → "Miiti") fired on
+  any word of three letters or less, so `per il mese` became `peril mese`,
+  `for the office` became `forthe office` and `via roma` became `viaroma`. It
+  now looks for what actually identifies a broken word — a short capitalised
+  fragment followed by a lowercase tail — instead of length alone, and reuses
+  the existing `STOPWORDS` list rather than a shorter second copy of it.
+
 ## [0.12.0] - 2026-08-01
 
 ### Added
