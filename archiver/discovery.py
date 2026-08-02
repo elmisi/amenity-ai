@@ -1,9 +1,9 @@
-"""Scoperta dei modelli disponibili sui provider configurati.
+"""Discovery of the models available on the configured providers.
 
-Una richiesta per provider, le tre in parallelo: il costo peggiore resta
-il timeout singolo, non la loro somma. Ollama >= 0.31 dichiara già
-capabilities e parameter_size in /api/tags, quindi non serve una richiesta
-per modello né una cache delle capability dichiarate.
+One request per provider, the three of them in parallel: the worst case
+stays a single timeout rather than their sum. Ollama >= 0.31 already
+declares capabilities and parameter_size in /api/tags, so no per-model
+request and no cache of declared capabilities are needed.
 """
 from __future__ import annotations
 
@@ -159,7 +159,7 @@ def _probe_one(
 ) -> ProviderStatus:
     url = url.strip()
     if not url:
-        return ProviderStatus(name=spec.name, configured=False, detail="non configurato")
+        return ProviderStatus(name=spec.name, configured=False, detail="not configured")
     endpoint = url.rstrip("/") + ("/api/tags" if spec.kind == KIND_OLLAMA else "/v1/models")
     try:
         payload = fetch(endpoint, timeout_s=timeout_s)
@@ -180,7 +180,7 @@ def _probe_one(
         url=url,
         configured=True,
         available=True,
-        detail="ok" if models else "raggiungibile, nessun modello",
+        detail="ok" if models else "reachable, no models",
         models=models,
     )
 

@@ -1,11 +1,12 @@
-"""Operazioni amministrative: download dei modelli e probe delle capability.
+"""Administrative operations: model download and capability probing.
 
-Il download avviene SULLA MACCHINA CHE OSPITA OLLAMA, non su quella che
-esegue amenity-ai: puntando a un host remoto i gigabyte finiscono lì.
+The download happens ON THE MACHINE HOSTING OLLAMA, not on the one running
+amenity-ai: point the endpoint at a remote host and the gigabytes land
+there.
 
-La cancellazione è cooperativa e segue la convenzione già usata da scan,
-classify e move: un callback should_cancel interrogato fra un blocco e
-l'altro dello stream.
+Cancellation is cooperative and follows the convention already used by
+scan, classify and move: a should_cancel callback polled between one chunk
+of the stream and the next.
 """
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ def pull_model(
     opener: Optional[Callable[..., Any]] = None,
     timeout_s: float = 3600.0,
 ) -> Optional[str]:
-    """Scarica un modello. Ritorna None se riuscito, altrimenti l'errore."""
+    """Pull a model. Returns None on success, the error message otherwise."""
     send = opener or urlopen
     request = Request(
         base_url.rstrip("/") + "/api/pull",
@@ -56,7 +57,7 @@ def pull_model(
         with send(request, timeout=timeout_s) as resp:
             for raw in resp:
                 if should_cancel is not None and should_cancel():
-                    return "annullato"
+                    return "cancelled"
                 line = raw.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
@@ -89,7 +90,7 @@ def probe_vision(
     opener: Optional[Callable[..., Any]] = None,
     timeout_s: float = 30.0,
 ) -> Optional[bool]:
-    """Chiede al modello di guardare un PNG 1x1. None = non conclusivo."""
+    """Ask the model to look at a 1x1 PNG. None means inconclusive."""
     send = opener or urlopen
     payload = {
         "model": model,

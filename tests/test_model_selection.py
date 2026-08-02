@@ -74,8 +74,8 @@ def test_within_one_provider_classify_prefers_the_5_to_9b_bucket():
 
 
 def test_curated_bias_breaks_ties_inside_a_bucket():
-    # Stessa fascia (2-5B) e stesso provider: decide la lista curata,
-    # dove qwen2.5:3b-instruct precede gemma2:2b.
+    # Same band (2-5B) and same provider: the curated list decides, and
+    # there qwen2.5:3b-instruct comes before gemma2:2b.
     models = [
         m("ollama:gemma2:2b", "ollama", size=2.0),
         m("ollama:qwen2.5:3b-instruct", "ollama", size=3.0),
@@ -84,8 +84,8 @@ def test_curated_bias_breaks_ties_inside_a_bucket():
 
 
 def test_curated_bias_matches_on_the_bare_id():
-    # Lo stesso modello servito da vLLM deve beneficiare della voce curata
-    # scritta senza prefisso.
+    # The same model served by vLLM must benefit from the curated entry
+    # written without a prefix.
     models = [
         m("vllm:unknown-3b", "vllm", size=3.0),
         m("vllm:qwen2.5:3b-instruct", "vllm", size=3.0),

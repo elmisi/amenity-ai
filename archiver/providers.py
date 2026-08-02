@@ -1,10 +1,10 @@
-"""Registry dei provider LLM.
+"""Registry of the LLM providers.
 
-Unica fonte di verità su nomi, prefissi, priorità e differenze di
-comportamento fra provider. L'ordine di dichiarazione di PROVIDERS È la
-priorità usata dal ranking: vllm regge la contesa e scalerà quando la
-scansione verrà parallelizzata; ollama è sempre disponibile; ds4 è
-mutuamente esclusivo, quindi una scansione lunga lo monopolizzerebbe.
+The single source of truth for names, prefixes, priority and the ways
+providers differ. The declaration order of PROVIDERS IS the priority the
+ranking uses: vllm holds up under contention and will scale once scanning
+runs in parallel; ollama is always there; ds4 serves one request at a
+time, so a long scan would monopolise it.
 """
 from __future__ import annotations
 
@@ -21,9 +21,9 @@ class ProviderSpec:
     kind: str
     prefix: str
     default_url: str = ""
-    # Campi da aggiungere al payload per spegnere il ragionamento. Ogni server
-    # ha la sua leva e ignora silenziosamente quella degli altri, quindi un
-    # flag booleano unico non basta: serve sapere QUALE chiave usare.
+    # Fields to add to the payload to switch reasoning off. Every server has
+    # its own lever and silently ignores the others', so a single boolean is
+    # not enough: what matters is WHICH key to send.
     thinking_off: Mapping[str, Any] = field(default_factory=dict)
     supports_install: bool = False
 
@@ -52,8 +52,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
 
 PROVIDER_NAMES: tuple[str, ...] = tuple(p.name for p in PROVIDERS)
 
-# Gli id senza prefisso noto vengono da config o cache scritte prima della
-# 0.12.0, quando "nudo" significava Ollama.
+# Ids with no known prefix come from configs or caches written before
+# 0.12.0, when a bare id meant Ollama.
 _LEGACY_SPEC = next(p for p in PROVIDERS if p.name == "ollama")
 
 
@@ -72,10 +72,10 @@ def provider_priority(name: str) -> int:
 
 
 def split_model_id(model_id: str) -> tuple[ProviderSpec, str]:
-    """Separa prefisso e id nudo confrontando con i prefissi NOTI.
+    """Split prefix from bare id by matching against the KNOWN prefixes.
 
-    Non spezza sul primo ':' incontrato: "ollama:qwen3:8b" deve dare
-    ("ollama", "qwen3:8b") e "qwen3:8b" non deve dare un provider "qwen3".
+    It does not split on the first ':' it meets: "ollama:qwen3:8b" must give
+    ("ollama", "qwen3:8b"), and "qwen3:8b" must not invent a "qwen3" provider.
     """
     for spec in PROVIDERS:
         if model_id.startswith(spec.prefix):

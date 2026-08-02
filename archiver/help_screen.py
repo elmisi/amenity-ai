@@ -74,7 +74,7 @@ class HelpScreen(ModalScreen[None]):
                             "r       Reset the selected row back to pending (clears cached result)",
                             "R       Reset all rows back to pending (clears cache)",
                             "",
-                            "d       Doctor: verifica provider e modelli",
+                            "d       Doctor: check providers and models",
                             "q       Quit",
                         ]
                     ),

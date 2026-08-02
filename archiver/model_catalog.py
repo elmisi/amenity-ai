@@ -1,8 +1,8 @@
-"""Rosa curata dei modelli installabili, per ruolo.
+"""Curated shortlist of installable models, by role.
 
-Stesso criterio di manutenzione di CURATED_BIAS: a mano, ogni tanto, con
-task dedicate. Le dimensioni sono indicative e servono a far scegliere
-consapevolmente prima di scaricare gigabyte su una macchina remota.
+Maintained the same way as CURATED_BIAS: by hand, now and then, in
+dedicated passes. The sizes are indicative and exist so the choice is an
+informed one before gigabytes land on a remote machine.
 """
 from __future__ import annotations
 
@@ -19,14 +19,14 @@ class CatalogEntry:
 
 
 _VISION = (
-    CatalogEntry("moondream:latest", int(1.7 * _GB), "leggero e veloce"),
-    CatalogEntry("llava:7b", int(4.7 * _GB), "qualità migliore"),
-    CatalogEntry("minicpm-v:latest", int(5.5 * _GB), "ottimo sul testo nelle immagini"),
+    CatalogEntry("moondream:latest", int(1.7 * _GB), "light and fast"),
+    CatalogEntry("llava:7b", int(4.7 * _GB), "better quality"),
+    CatalogEntry("minicpm-v:latest", int(5.5 * _GB), "strong on text inside images"),
 )
 
 _TEXT = (
-    CatalogEntry("qwen2.5:3b-instruct", int(1.9 * _GB), "piccolo e affidabile"),
-    CatalogEntry("qwen3:8b", int(5.2 * _GB), "buon compromesso per la classificazione"),
+    CatalogEntry("qwen2.5:3b-instruct", int(1.9 * _GB), "small and dependable"),
+    CatalogEntry("qwen3:8b", int(5.2 * _GB), "a good compromise for classification"),
 )
 
 

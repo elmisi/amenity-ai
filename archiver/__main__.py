@@ -44,7 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Archive root destination (default: ./ARCHIVE)",
     )
 
-    sub.add_parser("doctor", help="Verifica provider e modelli disponibili")
+    sub.add_parser("doctor", help="Check available providers and models")
 
     report = sub.add_parser("report", help="Print a short performance report from the cache")
     report.add_argument(

@@ -64,7 +64,7 @@ def test_unconfigured_provider_fails_explicitly_instead_of_falling_back():
     result = llm_router.generate(model="ds4:whatever", prompt="hi", provider_urls=URLS)
     assert result.done is False
     assert "ds4" in (result.error or "")
-    assert "configurat" in (result.error or "")
+    assert "not configured" in (result.error or "")
 
 
 def test_image_file_goes_to_ollama_as_base64(monkeypatch, tmp_path):
@@ -82,8 +82,8 @@ def test_image_file_goes_to_ollama_as_base64(monkeypatch, tmp_path):
 
 
 def test_captioning_switches_reasoning_off_on_openai_compat_providers(monkeypatch, tmp_path):
-    # Senza questo la didascalia costa un monologo: misurato 59.5s contro 5.5s
-    # su vLLM per la stessa immagine, con lo stesso risultato.
+    # Without this a caption costs a monologue: measured 59.5s against 5.5s
+    # on vLLM for the same image, with the same result.
     png = tmp_path / "a.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\nrest")
     spy = _Spy(LLMResponse(text="ok"))
@@ -97,8 +97,8 @@ def test_captioning_switches_reasoning_off_on_openai_compat_providers(monkeypatc
 
 
 def test_captioning_leaves_ollama_untouched(monkeypatch, tmp_path):
-    # Non tutti i modelli vision di Ollama accettano `think`: su quel percorso
-    # la richiesta resta identica a prima.
+    # Not every Ollama vision model accepts `think`: on that path the
+    # request stays exactly as it was.
     png = tmp_path / "a.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\nrest")
     spy = _Spy(LLMResponse(text="ok"))

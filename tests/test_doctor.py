@@ -104,7 +104,7 @@ def test_probe_promotes_a_heuristic_vision_model_to_ok():
     ))
 
     def probe(*, url, bare_id):
-        return True  # il modello accetta immagini
+        return True  # the model does accept images
 
     report = run_doctor(discovery=discovery, settings=_settings(), probe=probe)
     assert _check(report, "role.vision").status == "ok"
@@ -145,5 +145,5 @@ def test_worst_and_exit_code_reflect_the_severity():
     report = run_doctor(discovery=DiscoveryResult(providers=(
         ProviderStatus(name="ollama", configured=False),
     )), settings=_settings())
-    assert report.worst == "fail"   # nessun modello di testo
+    assert report.worst == "fail"   # no text model at all
     assert report.exit_code == 1

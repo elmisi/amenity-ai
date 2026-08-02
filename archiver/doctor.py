@@ -1,8 +1,8 @@
-"""Diagnosi dei provider e dei modelli.
+"""Diagnosis of providers and models.
 
-Modulo puro: riceve il risultato della scoperta e restituisce un report.
-L'unico I/O possibile è il probe, che arriva iniettato come callable così
-i test non toccano la rete e la UI decide se pagarne il costo.
+A pure module: it takes the discovery result and returns a report. The only
+I/O it can do is the probe, injected as a callable so the tests never touch
+the network and the UI decides whether to pay its cost.
 """
 from __future__ import annotations
 
@@ -62,14 +62,14 @@ class DoctorReport:
 def _provider_check(status) -> Check:
     label = f"{status.name} {status.url}".strip()
     if not status.configured:
-        return Check(f"provider.{status.name}", label, STATUS_SKIP, "non configurato")
+        return Check(f"provider.{status.name}", label, STATUS_SKIP, "not configured")
     if not status.available:
         return Check(f"provider.{status.name}", label, STATUS_FAIL, status.detail)
     if not status.models:
         return Check(f"provider.{status.name}", label, STATUS_WARN,
-                     "raggiungibile, nessun modello")
+                     "reachable, no models")
     return Check(f"provider.{status.name}", label, STATUS_OK,
-                 f"{len(status.models)} modelli")
+                 f"{len(status.models)} models")
 
 
 def _installable_provider(discovery) -> Optional[str]:
@@ -93,7 +93,7 @@ def _remedies(discovery, role: str) -> tuple[Remedy, ...]:
         )
     return tuple(
         Remedy(kind="hint", model=e.tag, provider="", size_bytes=e.size_bytes,
-               note="avvia il server con questo modello, oppure configura ollama")
+               note="start the server with this model, or configure ollama")
         for e in entries
     )
 
@@ -133,16 +133,16 @@ def _apply_probe(discovery: "DiscoveryResult", probe) -> tuple["ModelInfo", ...]
 def _role_check(models, *, key: str, label: str, role: str, discovery, pinned: str) -> Check:
     ranked = rank_models(models, role)
     if not ranked:
-        return Check(key, label, STATUS_FAIL, "nessun modello disponibile",
+        return Check(key, label, STATUS_FAIL, "no model available",
                      _remedies(discovery, role))
     if pinned and pinned != "auto" and pinned not in ranked:
         return Check(key, label, STATUS_WARN,
-                     f"modello fissato non trovato: {pinned} (userei {ranked[0]})")
+                     f"pinned model not found: {pinned} (would use {ranked[0]})")
     chosen = pinned if (pinned and pinned in ranked) else ranked[0]
     by_id = {m.id: m for m in models}
     if by_id[chosen].capability_source == SOURCE_HEURISTIC:
         return Check(key, label, STATUS_WARN,
-                     f"{chosen} (capability dedotta dal nome, non confermata)")
+                     f"{chosen} (capability guessed from the name, unconfirmed)")
     return Check(key, label, STATUS_OK, chosen)
 
 
@@ -154,10 +154,10 @@ def run_doctor(
 ) -> DoctorReport:
     checks = [_provider_check(s) for s in discovery.providers]
     models = _apply_probe(discovery, probe)
-    checks.append(_role_check(models, key="role.text", label="modello semantico",
+    checks.append(_role_check(models, key="role.text", label="semantic model",
                               role=ROLE_FACTS, discovery=discovery,
                               pinned=settings.facts_model))
-    checks.append(_role_check(models, key="role.vision", label="modello vision",
+    checks.append(_role_check(models, key="role.vision", label="vision model",
                               role=ROLE_VISION, discovery=discovery,
                               pinned=settings.vision_model))
     return DoctorReport(checks=tuple(checks))

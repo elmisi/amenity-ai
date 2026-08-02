@@ -307,7 +307,7 @@ class ArchiverApp(App):
         available_models = self._discovery.models if self._discovery else ()
         provider_info = "Provider: (not detected yet)"
         if self._discovery:
-            provider_info = self._provider_line or "Provider: nessuno raggiungibile • models: 0"
+            provider_info = self._provider_line or "Provider: none reachable • models: 0"
             if available_models:
                 ids = [m.id for m in available_models]
                 shown = ", ".join(ids[:8])

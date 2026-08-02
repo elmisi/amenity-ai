@@ -1,13 +1,12 @@
-"""Backend OpenAI-compatible, condiviso da ds4 e vLLM.
+"""OpenAI-compatible backend, shared by ds4 and vLLM.
 
-Implementa il protocollo LLMBackend su POST /v1/chat/completions. Legge
-SOLO message.content, mai i campi di ragionamento: i modelli reasoning
-riempiono un campo separato lasciando content a null finché non hanno
-finito, e prenderlo per risposta significherebbe archiviare il monologo
-del modello invece del suo output.
+Implements the LLMBackend protocol over POST /v1/chat/completions. It reads
+ONLY message.content, never the reasoning fields: reasoning models fill a
+separate field and leave content null until they are done, and taking that
+for the answer would archive the model's monologue instead of its output.
 
-Le differenze fra provider dello stesso tipo (oggi: solo ds4 accetta
-reasoning_effort) vivono nel registry, non qui.
+Differences between providers of the same kind (today: only ds4 honours
+reasoning_effort) live in the registry, not here.
 """
 from __future__ import annotations
 
@@ -36,7 +35,7 @@ def _post_json(url: str, payload: dict[str, Any], *, timeout_s: float) -> dict[s
 
 
 def mime_from_b64(b64: str) -> str:
-    """Deduce il MIME dai magic bytes; default png se illeggibile."""
+    """Sniff the MIME type from the magic bytes; png when unreadable."""
     try:
         head = base64.b64decode(b64[:32] + "==", validate=False)
     except Exception:
@@ -53,7 +52,7 @@ def mime_from_b64(b64: str) -> str:
 
 
 class OpenAICompatBackend(BaseLLMBackend):
-    """Backend per qualunque server che parli l'API chat-completions di OpenAI.
+    """Backend for any server speaking OpenAI's chat-completions API.
 
     Usage:
         backend = OpenAICompatBackend(url, provider_by_name("vllm"))
@@ -104,9 +103,9 @@ class OpenAICompatBackend(BaseLLMBackend):
         temperature = (options or {}).get("temperature")
         if isinstance(temperature, (int, float)):
             payload["temperature"] = temperature
-        # response_format non è imposto dal server; keep_alive e num_predict
-        # sono specifici di Ollama. La forma JSON è garantita dai prompt più
-        # il normalizer e la riparazione JSON già esistenti.
+        # response_format is not enforced by the server; keep_alive and
+        # num_predict are Ollama-specific. JSON shape is secured by the
+        # prompts plus the existing normalizer and JSON repair.
 
         try:
             data = _post_json(f"{self.base_url}/v1/chat/completions", payload, timeout_s=timeout_s)

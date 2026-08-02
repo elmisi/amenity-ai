@@ -1,13 +1,13 @@
-"""Instrada le chiamate LLM al backend giusto, in base al prefisso del model-id.
+"""Route LLM calls to the right backend, based on the model-id prefix.
 
-Convenzione: ogni model-id porta con sé il provider ("ollama:", "vllm:",
-"ds4:"). Il prefisso viaggia ovunque — candidati, config, model_used in
-cache, UI — quindi non serve altro stato per sapere da dove viene un
-modello. Gli id senza prefisso noto vengono da config scritte prima della
-0.12.0 e valgono come Ollama.
+Convention: every model id carries its provider ("ollama:", "vllm:",
+"ds4:"). The prefix travels everywhere — candidates, config, model_used in
+the cache, the UI — so no extra state is needed to know where a model comes
+from. Ids with no known prefix come from configs written before 0.12.0 and
+count as Ollama.
 
-Il layer è stateless: un backend per chiamata, nessuno stato mutabile
-condiviso, così una futura scansione parallela non dovrà toccarlo.
+The layer is stateless: one backend per call, no shared mutable state, so a
+future parallel scan will not have to touch it.
 """
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def generate(
     backend, spec, bare_id = _resolve(model, provider_urls)
     if backend is None:
         return OllamaGenerateResult(
-            response="", error=f"{spec.name}: endpoint non configurato", done=False
+            response="", error=f"{spec.name}: endpoint not configured", done=False
         )
     kwargs: dict[str, Any] = dict(
         prompt=prompt,
@@ -90,9 +90,9 @@ def generate_with_image_file(
         timeout_s=timeout_s,
         images_b64=[b64],
         keep_alive="5m",
-        # Una didascalia di una riga non ha niente su cui ragionare, e un
-        # modello reasoning ci spende un ordine di grandezza in più. Su Ollama
-        # il flag resta non impostato: non tutti i suoi modelli vision lo
-        # accettano, e lì il costo del ragionamento non si presenta.
+        # A one-line caption has nothing to reason about, and a reasoning
+        # model spends an order of magnitude more on it. On Ollama the flag
+        # stays unset: not all of its vision models accept it, and the cost
+        # of reasoning does not show up there.
         think=False if spec.kind != KIND_OLLAMA else None,
     )
