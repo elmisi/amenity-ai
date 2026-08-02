@@ -15,10 +15,8 @@ from .utils_parsing import (
     extract_amount_token,
     extract_date_token,
     is_year,
-    name_token_count,
     short_entity,
     split_and_repair_tokens,
-    split_tokens,
 )
 
 
@@ -80,32 +78,6 @@ def cleanup_generic_words_in_name(*, proposed_name: str, original_filename: str)
     if not cleaned:
         return sanitize_name(Path(original_filename).stem) + ext
     return sanitize_name(" ".join(cleaned)) + ext
-
-
-def fallback_name_from_summary(*, summary: Optional[str], original_filename: str, sep: str) -> str:
-    """Generate a fallback filename from summary when LLM output is poor."""
-    stem = Path(original_filename).stem
-    ext = Path(original_filename).suffix
-    if not summary:
-        return sanitize_name(stem) + ext
-
-    words = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+", summary)
-    tokens: list[str] = []
-    for w in words:
-        lower = w.lower()
-        if lower in STOPWORDS:
-            continue
-        if re.fullmatch(r"(19\d{2}|20\d{2})", w):
-            continue
-        if len(w) <= 2:
-            continue
-        tokens.append(w)
-        if len(tokens) >= 10:
-            break
-    if not tokens:
-        return sanitize_name(stem) + ext
-    name = name_separator(sep).join(tokens)
-    return sanitize_name(name) + ext
 
 
 def propose_name_from_summary_and_facts(

@@ -3,12 +3,9 @@ from __future__ import annotations
 import json
 
 from archiver import analyzer
-from archiver.analyzer import AnalysisConfig, _classify_from_text, _extract_facts_from_text
+from archiver.analyzer import AnalysisConfig, _extract_facts_from_text
 from archiver.ollama_client import OllamaGenerateResult
 from archiver.scanner import ScanItem
-from archiver.taxonomy import DEFAULT_TAXONOMY_LINES, parse_taxonomy_lines
-
-_TAXONOMY, _ = parse_taxonomy_lines(DEFAULT_TAXONOMY_LINES)
 
 URLS = {"ollama": "http://ollama.invalid:11434", "vllm": "http://vllm.invalid:8000", "ds4": ""}
 
@@ -28,28 +25,6 @@ def _fake_generate(captured, payload_text):
         return OllamaGenerateResult(response=payload_text, model=kwargs["model"], done=True)
 
     return fake
-
-
-def test_classify_forwards_provider_urls_to_the_router(monkeypatch):
-    captured = {}
-    out = json.dumps({"category": "unknown", "reference_year": None, "proposed_name": "doc"})
-    monkeypatch.setattr(analyzer, "generate", _fake_generate(captured, out))
-
-    _classify_from_text(
-        model="vllm:qwen3.6-27b",
-        content="some text",
-        filename="a.pdf",
-        mtime_iso="2026-01-01T00:00:00",
-        provider_urls=URLS,
-        reference_year_hint=None,
-        category_hint=None,
-        output_language="en",
-        taxonomy=_TAXONOMY,
-        filename_separator="space",
-    )
-
-    assert captured["provider_urls"] == URLS
-    assert captured["model"] == "vllm:qwen3.6-27b"
 
 
 def test_facts_forwards_provider_urls_to_the_router(monkeypatch):

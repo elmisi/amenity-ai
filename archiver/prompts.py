@@ -5,7 +5,6 @@ test, and potentially customize.
 """
 from __future__ import annotations
 
-from typing import Any
 
 
 def build_json_repair_prompt(*, snippet: str) -> str:
@@ -16,83 +15,6 @@ Fix the following output into a single JSON object. Keep the same keys and value
 
 Broken output:
 \"\"\"{snippet}\"\"\"
-"""
-
-
-def _build_language_line_classify(output_language: str) -> str:
-    """Build the language instruction line for classification prompts."""
-    if output_language == "it":
-        return "Output language: Italian"
-    if output_language == "en":
-        return "Output language: English"
-    return "Output language: match the input document language (if unclear: English)"
-
-
-def build_classify_prompt(
-    *,
-    categories: list[str],
-    taxonomy_block: str,
-    filename: str,
-    mtime_iso: str,
-    reference_year_hint: str | None,
-    category_hint: str | None,
-    content: str,
-    output_language: str,
-) -> str:
-    """Build a prompt for document classification (legacy single-file mode)."""
-    year_hint_line = f"reference_year_hint: {reference_year_hint}" if reference_year_hint else "reference_year_hint: null"
-    category_hint_line = f"category_hint: {category_hint}" if category_hint else "category_hint: null"
-    language_line = _build_language_line_classify(output_language)
-
-    return f"""
-You are a document archiving assistant. Reply with VALID JSON only (no extra text).
-
-Goal:
-- understand what the document is about
-- choose a category from: {categories}
-- taxonomy (meaning + examples):
-{taxonomy_block}
-- if category_hint is present, you may use it unless the content clearly indicates a different category
-- estimate the reference year (reference_year) the document refers to
-- estimate the production year (production_year) (if unknown: null)
-- extract structured facts for later normalization (language, doc_type, tags, people, organizations, date candidates)
-- write a richer but compact summary_long (3-6 sentences)
-- propose a meaningful, descriptive file name (proposed_name) using words separated by spaces (not underscores)
-  - use 6-12 words when possible (not too short)
-  - include key entities (company/person), and month/period if present
-  - copy proper names as-is (do not guess spellings; if uncertain, omit the entity)
-  - do NOT include category/year unless there is no other useful info
-  - do NOT include generic words like "this document", "text", "image"
-  - keep it readable (avoid random IDs)
-- {language_line}
-- if unsure, set low confidence and provide skip_reason
-- if reference_year_hint is present, use it ONLY if the content doesn't clearly contradict it
-
-Input:
-filename: {filename}
-mtime_iso: {mtime_iso}
-{year_hint_line}
-{category_hint_line}
-content:
-\"\"\"{content}\"\"\"
-
-Output JSON schema:
-{{
-  "language": "it"|"en"|"unknown",
-  "doc_type": string,
-  "tags": string[],
-  "people": string[],
-  "organizations": string[],
-  "date_candidates": [{{"year": string, "type": "reference"|"production"|"other", "confidence": number}}],
-  "summary_long": string,
-  "summary": string,
-  "category": string,
-  "reference_year": string|null,
-  "production_year": string|null,
-  "proposed_name": string,
-  "confidence": number,
-  "skip_reason": string|null
-}}
 """
 
 

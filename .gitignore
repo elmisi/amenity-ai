@@ -8,3 +8,6 @@ __pycache__/
 *.swp
 *.egg-info/
 build/
+
+# runtime caches written next to the scanned source / archive
+.amenity-stuff/
