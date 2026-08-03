@@ -686,6 +686,9 @@ class ArchiverApp(App):
                     filename_separator=self.settings.filename_separator,
                     chunk_size=batch_size,
                     should_cancel=lambda: worker.is_cancelled,
+                    limiter=ConcurrencyLimiter.from_limits(
+                        self.settings.provider_concurrency
+                    ),
                 )
                 llm_elapsed = time.perf_counter() - t0
 
@@ -1020,6 +1023,7 @@ class ArchiverApp(App):
                 filename_separator=self.settings.filename_separator,
                 chunk_size=1,
                 should_cancel=lambda: worker.is_cancelled,
+                limiter=ConcurrencyLimiter.from_limits(self.settings.provider_concurrency),
             )
             llm_elapsed = time.perf_counter() - t0
             if worker.is_cancelled:

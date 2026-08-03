@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 from .llm_router import generate
+from .providers import split_model_id
 from .scanner import ScanItem
 from .taxonomy import Taxonomy, taxonomy_to_prompt_block
 from .utils_filename import (
@@ -278,6 +280,214 @@ def _propose_name_from_facts_json(
     )
 
 
+def _normalize_chunk(
+    batch: list[ScanItem],
+    *,
+    model: str,
+    provider_urls: Mapping[str, str],
+    taxonomy: Taxonomy,
+    output_language: str,
+    filename_separator: str,
+    should_cancel: Optional[Callable[[], bool]],
+    limiter,
+    allowed,
+    taxonomy_block: str,
+    sep_desc: str,
+    sep_label: str,
+) -> tuple[dict, Optional[str]]:
+    """Normalise one chunk and return (results, error).
+
+    Independent of every other chunk: it never sees what the others produced.
+    That independence is what lets chunks run at once, and it also repairs the
+    single-item fallback at the end, which used to test a dict already filled
+    by earlier chunks and so could never fire after the first one.
+    """
+    by_path: dict[str, dict] = {}
+    payload = []
+    by_input_path = {str(it.path): it for it in batch}
+    token_to_path = {f"doc_{idx + 1}": str(it.path) for idx, it in enumerate(batch)}
+    path_to_token = {path: token for token, path in token_to_path.items()}
+
+    def fallback_to_single_items(error_reason: str) -> tuple[dict, Optional[str]]:
+        fallback_by_path: dict[str, dict] = {}
+        for single in batch:
+            single_out, single_error = _normalize_chunk(
+                [single],
+                model=model,
+                provider_urls=provider_urls,
+                taxonomy=taxonomy,
+                output_language=output_language,
+                filename_separator=filename_separator,
+                should_cancel=should_cancel,
+                limiter=limiter,
+                allowed=allowed,
+                taxonomy_block=taxonomy_block,
+                sep_desc=sep_desc,
+                sep_label=sep_label,
+            )
+            if single_error:
+                return fallback_by_path, error_reason
+            fallback_by_path.update(single_out)
+        return fallback_by_path, None
+
+    def apply_row(row: dict, *, path: str) -> None:
+        src = by_input_path.get(path)
+        cat = row.get("category")
+        if not isinstance(cat, str) or cat not in allowed:
+            cat = "unknown"
+        if cat == "unknown" and src:
+            repaired = _category_repair_from_taxonomy(
+                taxonomy=taxonomy,
+                summary_long=src.summary_long,
+                facts_obj=_parse_facts_json(src.facts_json),
+            )
+            if repaired in allowed:
+                cat = repaired
+        year = row.get("reference_year")
+        if not isinstance(year, str) or not re.fullmatch(r"(19\\d{2}|20\\d{2})", year.strip()):
+            year = None
+        name = row.get("proposed_name")
+        if not isinstance(name, str) or not name.strip():
+            name = Path(path).name
+        name = ensure_extension(sanitize_name(name.strip()), Path(path).name)
+        name = normalize_separators(name, sep=sep_label)
+
+        cur_facts = _parse_facts_json(src.facts_json) if src else {}
+
+        derived_year = _best_year_from_facts(cur_facts, summary_long=src.summary_long, proposed_name=name) if src else None
+
+        # If year is missing, derive it from facts/hints/summary.
+        if not year and derived_year:
+            year = derived_year
+        # If the model picked a year that isn't evidenced, prefer the derived one.
+        if year and derived_year and year != derived_year and src:
+            evidence = f"{src.summary_long or ''} {name}"
+            has_year = bool(re.search(rf"(?<!\d){re.escape(year)}(?!\d)", evidence))
+            has_derived = bool(re.search(rf"(?<!\d){re.escape(derived_year)}(?!\d)", evidence))
+            if (not has_year and has_derived) or (int(year) < 1950 and int(derived_year) >= 1950):
+                year = derived_year
+
+        # If the model output is generic, rebuild deterministically from summary_long + facts_json.
+        if src and src.summary_long:
+            orgs = cur_facts.get("organizations") if isinstance(cur_facts.get("organizations"), list) else []
+            org_hint = short_entity(str(orgs[0])) if orgs else ""
+            low_signal = len(Path(name).stem) < 18 or name_token_count(name) < 4
+            missing_entity = bool(org_hint) and (org_hint.lower().split()[0] not in name.lower())
+            if low_signal or missing_entity:
+                better = _propose_name_from_facts_json(
+                    summary_long=src.summary_long,
+                    facts_json=src.facts_json,
+                    reference_year=year,
+                    original_filename=Path(path).name,
+                    filename_separator=sep_label,
+                )
+                if better:
+                    name = better
+
+        summary = row.get("summary")
+        if not isinstance(summary, str):
+            summary = ""
+        conf = row.get("confidence")
+        conf_out = float(conf) if isinstance(conf, (int, float)) else None
+
+        by_path[path] = {
+            "category": cat,
+            "reference_year": year,
+            "proposed_name": name,
+            "summary": summary.strip()[:200] or None,
+            "confidence": conf_out,
+            "model_used": model,
+        }
+
+    for it in batch:
+        facts_obj = _parse_facts_json(it.facts_json)
+        # Keep purpose in scan cache, but do not use it during classification/naming.
+        if isinstance(facts_obj, dict) and "purpose" in facts_obj:
+            facts_obj = dict(facts_obj)
+            facts_obj.pop("purpose", None)
+        path_str = str(it.path)
+        payload.append(
+            {
+                "path": path_to_token.get(path_str, path_str),
+                "kind": it.kind,
+                "summary_long": _compact_summary_long(it.summary_long),
+                "facts": _facts_payload_for_model(facts_obj),
+                "current": {
+                    "category": it.category,
+                    "reference_year": it.reference_year,
+                    "proposed_name": it.proposed_name,
+                },
+            }
+        )
+
+    prompt = build_normalize_batch_prompt(
+        allowed_categories=list(allowed),
+        taxonomy_block=taxonomy_block,
+        separator_description=sep_desc,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        output_language=output_language,
+    )
+
+    if should_cancel and should_cancel():
+        return by_path, "Cancelled"
+    gen = generate(
+        model=model,
+        prompt=prompt,
+        provider_urls=provider_urls,
+        timeout_s=180.0,
+        response_format=_NORMALIZE_RESPONSE_SCHEMA,
+        think=False,
+        keep_alive="5m",
+        options=_normalize_options(len(batch)),
+        limiter=limiter,
+    )
+    if gen.error:
+        if len(batch) > 1:
+            recovered, fallback_error = fallback_to_single_items(
+                f"Batch normalization failed: {gen.error}"
+            )
+            if fallback_error is None:
+                return recovered, None
+        return by_path, gen.error
+    data = _extract_json(gen.response)
+    if isinstance(data, dict) and len(batch) == 1:
+        data = [data]
+    if not isinstance(data, list):
+        if len(batch) > 1:
+            recovered, fallback_error = fallback_to_single_items(
+                "Unparseable output (JSON list)"
+            )
+            if fallback_error is None:
+                return recovered, None
+        return by_path, "Unparseable output (JSON list)"
+
+    # Some models may fail to echo back the full absolute path. For single-item normalization we
+    # can safely apply the first output row to the only input item.
+    fallback_row: Optional[dict] = None
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        path = row.get("path")
+        if not isinstance(path, str) or not path:
+            if len(batch) == 1 and fallback_row is None:
+                fallback_row = row
+            continue
+        actual_path = token_to_path.get(path, path)
+        src = by_input_path.get(actual_path)
+        # Ignore mismatched paths for multi-item batches; for per-file this is handled below.
+        if not src:
+            if len(batch) == 1 and fallback_row is None:
+                fallback_row = row
+            continue
+        apply_row(row, path=actual_path)
+
+    if len(batch) == 1 and not by_path and fallback_row is not None:
+        only_path = str(batch[0].path)
+        apply_row(fallback_row, path=only_path)
+
+    return by_path, None
+
+
 def normalize_items(
     *,
     items: list[ScanItem],
@@ -290,6 +500,16 @@ def normalize_items(
     provider_urls: Optional[Mapping[str, str]] = None,
     limiter=None,
 ) -> NormalizationResult:
+    """Normalise every item, one chunk of `chunk_size` per request.
+
+    Chunks run concurrently up to the provider's own limit. Bigger chunks are
+    not the alternative: a longer prompt is a longer request with more output
+    and worse answers, and the chunk size was tuned.
+
+    Each chunk is independent, results merge in input order, and the reported
+    error is the first one raised by a chunk that produced nothing. A cancelled
+    run says so regardless of what else went wrong.
+    """
     provider_urls = provider_urls or {}
     allowed = taxonomy.allowed_names
     taxonomy_block = taxonomy_to_prompt_block(taxonomy)
@@ -301,187 +521,49 @@ def normalize_items(
         "dash": "dashes",
     }.get(filename_separator, "spaces")
 
-    by_path: dict[str, dict] = {}
-    for batch in _chunk(items, chunk_size):
-        if should_cancel and should_cancel():
-            return NormalizationResult(by_path=by_path, model_used=model, error="Cancelled")
-        payload = []
-        by_input_path = {str(it.path): it for it in batch}
-        token_to_path = {f"doc_{idx + 1}": str(it.path) for idx, it in enumerate(batch)}
-        path_to_token = {path: token for token, path in token_to_path.items()}
+    chunks = _chunk(items, chunk_size)
+    if not chunks:
+        return NormalizationResult(by_path={}, model_used=model)
 
-        def fallback_to_single_items(error_reason: str) -> NormalizationResult:
-            fallback_by_path: dict[str, dict] = {}
-            for single in batch:
-                single_result = normalize_items(
-                    items=[single],
-                    model=model,
-                    provider_urls=provider_urls,
-                    taxonomy=taxonomy,
-                    output_language=output_language,
-                    filename_separator=filename_separator,
-                    chunk_size=1,
-                    should_cancel=should_cancel,
-                )
-                if single_result.error:
-                    return NormalizationResult(by_path={**by_path, **fallback_by_path}, model_used=model, error=error_reason)
-                fallback_by_path.update(single_result.by_path)
-            return NormalizationResult(by_path={**by_path, **fallback_by_path}, model_used=model)
-
-        def apply_row(row: dict, *, path: str) -> None:
-            src = by_input_path.get(path)
-            cat = row.get("category")
-            if not isinstance(cat, str) or cat not in allowed:
-                cat = "unknown"
-            if cat == "unknown" and src:
-                repaired = _category_repair_from_taxonomy(
-                    taxonomy=taxonomy,
-                    summary_long=src.summary_long,
-                    facts_obj=_parse_facts_json(src.facts_json),
-                )
-                if repaired in allowed:
-                    cat = repaired
-            year = row.get("reference_year")
-            if not isinstance(year, str) or not re.fullmatch(r"(19\\d{2}|20\\d{2})", year.strip()):
-                year = None
-            name = row.get("proposed_name")
-            if not isinstance(name, str) or not name.strip():
-                name = Path(path).name
-            name = ensure_extension(sanitize_name(name.strip()), Path(path).name)
-            name = normalize_separators(name, sep=sep_label)
-
-            cur_facts = _parse_facts_json(src.facts_json) if src else {}
-
-            derived_year = _best_year_from_facts(cur_facts, summary_long=src.summary_long, proposed_name=name) if src else None
-
-            # If year is missing, derive it from facts/hints/summary.
-            if not year and derived_year:
-                year = derived_year
-            # If the model picked a year that isn't evidenced, prefer the derived one.
-            if year and derived_year and year != derived_year and src:
-                evidence = f"{src.summary_long or ''} {name}"
-                has_year = bool(re.search(rf"(?<!\d){re.escape(year)}(?!\d)", evidence))
-                has_derived = bool(re.search(rf"(?<!\d){re.escape(derived_year)}(?!\d)", evidence))
-                if (not has_year and has_derived) or (int(year) < 1950 and int(derived_year) >= 1950):
-                    year = derived_year
-
-            # If the model output is generic, rebuild deterministically from summary_long + facts_json.
-            if src and src.summary_long:
-                orgs = cur_facts.get("organizations") if isinstance(cur_facts.get("organizations"), list) else []
-                org_hint = short_entity(str(orgs[0])) if orgs else ""
-                low_signal = len(Path(name).stem) < 18 or name_token_count(name) < 4
-                missing_entity = bool(org_hint) and (org_hint.lower().split()[0] not in name.lower())
-                if low_signal or missing_entity:
-                    better = _propose_name_from_facts_json(
-                        summary_long=src.summary_long,
-                        facts_json=src.facts_json,
-                        reference_year=year,
-                        original_filename=Path(path).name,
-                        filename_separator=sep_label,
-                    )
-                    if better:
-                        name = better
-
-            summary = row.get("summary")
-            if not isinstance(summary, str):
-                summary = ""
-            conf = row.get("confidence")
-            conf_out = float(conf) if isinstance(conf, (int, float)) else None
-
-            by_path[path] = {
-                "category": cat,
-                "reference_year": year,
-                "proposed_name": name,
-                "summary": summary.strip()[:200] or None,
-                "confidence": conf_out,
-                "model_used": model,
-            }
-
-        for it in batch:
-            facts_obj = _parse_facts_json(it.facts_json)
-            # Keep purpose in scan cache, but do not use it during classification/naming.
-            if isinstance(facts_obj, dict) and "purpose" in facts_obj:
-                facts_obj = dict(facts_obj)
-                facts_obj.pop("purpose", None)
-            path_str = str(it.path)
-            payload.append(
-                {
-                    "path": path_to_token.get(path_str, path_str),
-                    "kind": it.kind,
-                    "summary_long": _compact_summary_long(it.summary_long),
-                    "facts": _facts_payload_for_model(facts_obj),
-                    "current": {
-                        "category": it.category,
-                        "reference_year": it.reference_year,
-                        "proposed_name": it.proposed_name,
-                    },
-                }
-            )
-
-        prompt = build_normalize_batch_prompt(
-            allowed_categories=list(allowed),
-            taxonomy_block=taxonomy_block,
-            separator_description=sep_desc,
-            payload_json=json.dumps(payload, ensure_ascii=False),
-            output_language=output_language,
-        )
-
-        if should_cancel and should_cancel():
-            return NormalizationResult(by_path=by_path, model_used=model, error="Cancelled")
-        gen = generate(
+    def run(batch: list[ScanItem]) -> tuple[dict, Optional[str]]:
+        return _normalize_chunk(
+            batch,
             model=model,
-            prompt=prompt,
             provider_urls=provider_urls,
-            timeout_s=180.0,
-            response_format=_NORMALIZE_RESPONSE_SCHEMA,
-            think=False,
-            keep_alive="5m",
-            options=_normalize_options(len(batch)),
+            taxonomy=taxonomy,
+            output_language=output_language,
+            filename_separator=filename_separator,
+            should_cancel=should_cancel,
             limiter=limiter,
+            allowed=allowed,
+            taxonomy_block=taxonomy_block,
+            sep_desc=sep_desc,
+            sep_label=sep_label,
         )
-        if gen.error:
-            if len(batch) > 1:
-                fallback = fallback_to_single_items(f"Batch normalization failed: {gen.error}")
-                if fallback.error is None:
-                    by_path = fallback.by_path
-                    continue
-            return NormalizationResult(by_path=by_path, model_used=model, error=gen.error)
-        data = _extract_json(gen.response)
-        if isinstance(data, dict) and len(batch) == 1:
-            data = [data]
-        if not isinstance(data, list):
-            if len(batch) > 1:
-                fallback = fallback_to_single_items("Unparseable output (JSON list)")
-                if fallback.error is None:
-                    by_path = fallback.by_path
-                    continue
-            return NormalizationResult(by_path=by_path, model_used=model, error="Unparseable output (JSON list)")
 
-        # Some models may fail to echo back the full absolute path. For single-item normalization we
-        # can safely apply the first output row to the only input item.
-        fallback_row: Optional[dict] = None
-        for row in data:
-            if not isinstance(row, dict):
-                continue
-            path = row.get("path")
-            if not isinstance(path, str) or not path:
-                if len(batch) == 1 and fallback_row is None:
-                    fallback_row = row
-                continue
-            actual_path = token_to_path.get(path, path)
-            src = by_input_path.get(actual_path)
-            # Ignore mismatched paths for multi-item batches; for per-file this is handled below.
-            if not src:
-                if len(batch) == 1 and fallback_row is None:
-                    fallback_row = row
-                continue
-            apply_row(row, path=actual_path)
+    workers = 1
+    if limiter is not None:
+        spec, _ = split_model_id(model)
+        workers = max(1, min(len(chunks), limiter.limit(spec.name)))
+    if workers == 1:
+        outcomes = [run(batch) for batch in chunks]
+    else:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="classify") as pool:
+            outcomes = list(pool.map(run, chunks))
 
-        if len(batch) == 1 and not by_path and fallback_row is not None:
-            only_path = str(batch[0].path)
-            apply_row(fallback_row, path=only_path)
+    by_path: dict[str, dict] = {}
+    first_error: Optional[str] = None
+    cancelled = False
+    for partial, error in outcomes:
+        by_path.update(partial)
+        if error == "Cancelled":
+            cancelled = True
+        elif error and first_error is None:
+            first_error = error
+    if cancelled:
+        return NormalizationResult(by_path=by_path, model_used=model, error="Cancelled")
+    return NormalizationResult(by_path=by_path, model_used=model, error=first_error)
 
-    return NormalizationResult(by_path=by_path, model_used=model)
 
 
 def normalize_items_with_fallback(
