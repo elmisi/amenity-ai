@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.1] - 2026-08-03
+
+- The settings screen stops wasting the taxonomy's space. The provider
+  summary loses its border and padding, each provider becomes a single row —
+  name, URL, parallel slots — instead of five lines of label, blanks and
+  bordered input, and the blank line above the taxonomy label is gone. On a
+  40-row terminal the taxonomy editor grows from ~4 rows to 20.
+- The language tag in the taxonomy label ("[EN]", "[IT]") is visible again:
+  Rich was silently eating it as a markup style tag.
+
 ## [0.15.0] - 2026-08-03
 
 - Three more file types, each riding plumbing that already existed:
