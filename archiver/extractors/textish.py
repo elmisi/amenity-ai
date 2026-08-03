@@ -112,5 +112,13 @@ def extract_textish_with_meta(
             return None, "No extractable email content", None
         return text, "eml", TextExtractMeta(method="eml", extract_time_s=time.perf_counter() - t0)
 
+    if ext == "ics":
+        from .textish_ics import extract_ics_text
+
+        text = extract_ics_text(path, max_chars=max_chars)
+        if not text:
+            return None, "No calendar events found", None
+        return text, "ics", TextExtractMeta(method="ics", extract_time_s=time.perf_counter() - t0)
+
     return None, "Unsupported text type", None
 

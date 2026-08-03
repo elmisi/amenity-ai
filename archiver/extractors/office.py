@@ -26,7 +26,7 @@ def extract_office_text_with_meta(
     Supported (best-effort):
     - .docx: ZIP/XML parsing (no extra deps)
     - .xlsx: ZIP/XML parsing (no extra deps)
-    - .odt: ZIP/XML parsing (no extra deps)
+    - .odt, .ods: ZIP/XML parsing (no extra deps; same content.xml container)
     - .doc, .xls: requires LibreOffice (soffice) or antiword (doc only)
     """
     ext = path.suffix.lower().lstrip(".")
@@ -43,6 +43,14 @@ def extract_office_text_with_meta(
         if not text:
             return None, "No extractable ODT text", None
         return text, "odt", OfficeExtractMeta(method="odt", extract_time_s=time.perf_counter() - t0)
+
+    if ext == "ods":
+        # Same container as odt: every ODF document keeps its text in
+        # content.xml, and the extraction pulls text nodes generically.
+        text = _extract_odt_text(path, max_chars=max_chars)
+        if not text:
+            return None, "No extractable ODS text", None
+        return text, "ods", OfficeExtractMeta(method="ods", extract_time_s=time.perf_counter() - t0)
 
     if ext == "xlsx":
         text = _extract_xlsx_text(path, max_chars=max_chars)
