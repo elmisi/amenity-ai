@@ -123,9 +123,11 @@ def banner_for_state(
     if state == "idle":
         return ("Status: idle (no running task)", "bold black on grey70")
     if state.startswith("stopping"):
-        in_flight = scanning + classifying + moving
-        if in_flight:
-            return (f"STOPPING — waiting for {in_flight} requests in flight",
+        # Only scanning rows equal requests in flight. A classify marks every
+        # target row `classifying` up front, so counting those would claim
+        # dozens of requests when at most the provider limit is out.
+        if scanning:
+            return (f"STOPPING — waiting for {scanning} requests in flight",
                     "bold white on red")
         return ("STOPPING…", "bold white on red")
     if state.startswith("scanning") and scanning:

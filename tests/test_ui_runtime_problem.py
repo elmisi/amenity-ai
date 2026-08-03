@@ -102,3 +102,12 @@ def test_stopping_with_nothing_left_says_so_plainly():
         state="stopping…", scanning=0, classifying=0, moving=0, problem=None, severity="ok",
     )
     assert text == "STOPPING…"
+
+
+def test_stopping_a_classify_does_not_count_rows_as_requests():
+    """A classify marks every target row `classifying` before the request goes
+    out, so twelve rows can mean a single request in flight."""
+    text, _ = banner_for_state(
+        state="stopping…", scanning=0, classifying=12, moving=0, problem=None, severity="ok",
+    )
+    assert text == "STOPPING…"

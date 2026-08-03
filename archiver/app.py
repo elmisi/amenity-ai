@@ -532,6 +532,10 @@ class ArchiverApp(App):
             if self._cache and self._cache_throttle.flush():
                 self._cache.save()
             self._run_in_flight = 0
+            # Also retire the run's total: the progress line is gated on it, and
+            # a later task in the same session (a classify, a single-row scan)
+            # would otherwise render this run's frozen numbers as its own.
+            self._run_total = 0
             self._analysis_task.running = False
             self._render_notes()
 
