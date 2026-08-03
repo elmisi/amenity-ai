@@ -1,11 +1,56 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .scanner import ScanItem
+
+
+class SaveThrottle:
+    """Decide when a cache write is worth its cost.
+
+    One write re-serialises the whole cache. At one file every twenty seconds
+    that is invisible; with several in flight it starts stealing frames from
+    the event loop, which is where the write happens.
+    """
+
+    def __init__(
+        self,
+        *,
+        min_interval_s: float = 5.0,
+        min_dirty: int = 25,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._min_interval_s = min_interval_s
+        self._min_dirty = min_dirty
+        self._clock = clock
+        self._dirty = 0
+        self._last = clock()
+
+    def record(self) -> bool:
+        """Register one changed entry. True when it is time to write."""
+        self._dirty += 1
+        due = (
+            self._dirty >= self._min_dirty
+            or (self._clock() - self._last) >= self._min_interval_s
+        )
+        if due:
+            self._reset()
+        return due
+
+    def flush(self) -> bool:
+        """True when unwritten changes remain. Call at the end of a run."""
+        if self._dirty == 0:
+            return False
+        self._reset()
+        return True
+
+    def _reset(self) -> None:
+        self._dirty = 0
+        self._last = self._clock()
 
 
 @dataclass(frozen=True)
