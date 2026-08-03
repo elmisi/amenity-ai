@@ -73,6 +73,7 @@ class HelpScreen(ModalScreen[None]):
                             "",
                             "r       Reset the selected row back to pending (clears cached result)",
                             "R       Reset all rows back to pending (clears cache)",
+                            "k       Requeue skipped and error rows as pending (keeps everything else)",
                             "",
                             "d       Doctor: check providers and models",
                             "q       Quit",

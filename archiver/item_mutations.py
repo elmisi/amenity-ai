@@ -2,7 +2,22 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from .extractors.registry import EXTRACTABLE_TEXT_KINDS
 from .scanner import ScanItem
+
+
+def can_requeue(item: ScanItem) -> bool:
+    """True when requeuing this row could change its outcome.
+
+    A skipped or error row is worth another try only if some extractor can
+    handle its kind. The scanner lists every file in the folder and marks the
+    zips, webp and friends skipped at listing time; requeuing those just runs
+    them through the analyzer to be re-skipped, polluting the cache with
+    entries that were never meant to be there.
+    """
+    if item.status not in {"skipped", "error"}:
+        return False
+    return item.kind == "image" or item.kind in EXTRACTABLE_TEXT_KINDS
 
 
 def reset_item_to_pending(item: ScanItem) -> ScanItem:

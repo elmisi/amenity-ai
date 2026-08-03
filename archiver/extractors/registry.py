@@ -10,6 +10,16 @@ from .pdf import PdfExtractMeta, extract_pdf_text_with_meta
 
 ExtractMeta = Union[PdfExtractMeta, OfficeExtractMeta, TextExtractMeta]
 
+# The kinds this registry can extract text from. The analyzer derives its
+# dispatch from these instead of keeping a twin list: the two once drifted
+# apart, and csv/html/yaml/gpx files were reported "Unsupported file type"
+# while their extractors sat here unused.
+OFFICE_KINDS: frozenset[str] = frozenset({"doc", "docx", "odt", "xls", "xlsx"})
+TEXTISH_KINDS: frozenset[str] = frozenset(
+    {"json", "md", "txt", "rtf", "svg", "kmz", "gpx", "html", "csv", "yaml"}
+)
+EXTRACTABLE_TEXT_KINDS: frozenset[str] = frozenset({"pdf"}) | OFFICE_KINDS | TEXTISH_KINDS
+
 
 def extract_with_meta(
     *,
@@ -26,8 +36,8 @@ def extract_with_meta(
     """
     if kind == "pdf":
         return extract_pdf_text_with_meta(path, max_chars=max_chars, ocr_mode=ocr_mode)
-    if kind in {"doc", "docx", "odt", "xls", "xlsx"}:
+    if kind in OFFICE_KINDS:
         return extract_office_text_with_meta(path, max_chars=max_chars)
-    if kind in {"json", "md", "txt", "rtf", "svg", "kmz", "gpx", "html", "csv", "yaml"}:
+    if kind in TEXTISH_KINDS:
         return extract_textish_with_meta(path, max_chars=max_chars)
     return None, "Unsupported file type", None
