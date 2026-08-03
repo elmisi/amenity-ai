@@ -42,15 +42,16 @@ class SettingsScreen(ModalScreen[SettingsResult]):
     CSS = """
     SettingsScreen { layout: vertical; }
     #intro { height: auto; color: $text-muted; }
-    #provider { height: auto; border: round $accent; background: $panel; padding: 1 2; }
+    #provider { height: auto; background: $panel; padding: 0 1; }
     #options { height: auto; border: round $accent; background: $panel; }
-    #taxonomy_label { height: auto; padding: 1 0 0 0; }
+    #taxonomy_label { height: auto; }
     #taxonomy { height: 1fr; border: round $accent; }
     #errors { height: auto; color: $error; }
-    .provider_label { height: auto; padding: 1 0 0 0; }
-    .provider_row { height: 3; }
-    .provider_url { width: 1fr; }
-    .provider_par { width: 14; }
+    .provider_row { height: 1; }
+    .provider_name { width: 8; color: $text-muted; padding: 0 1; }
+    .provider_url { width: 1fr; height: 1; border: none; padding: 0 1; }
+    .provider_par { width: 10; height: 1; border: none; padding: 0 1; }
+    .provider_url:focus, .provider_par:focus { background: $accent 30%; }
     """
 
     BINDINGS = [
@@ -134,20 +135,22 @@ class SettingsScreen(ModalScreen[SettingsResult]):
             id="intro",
         )
         yield Static(self._provider_info or "Provider: (unknown)", id="provider", markup=False)
+        # One line per provider: name, URL, parallel slots. The default URL
+        # lives in the placeholder, so no label line is needed above.
         for spec in PROVIDERS:
             placeholder = spec.default_url or "empty = disabled"
-            yield Static(f"{spec.name} endpoint ({placeholder}):",
-                         classes="provider_label", id=f"{spec.name}_label")
             with Horizontal(classes="provider_row"):
+                yield Static(spec.name, classes="provider_name")
                 yield Input(value=self._providers.get(spec.name, ""),
                             placeholder=placeholder,
                             classes="provider_url", id=f"{spec.name}_url")
                 yield Input(value=str(self._concurrency[spec.name]),
-                            placeholder="parallel",
+                            placeholder="par",
                             classes="provider_par", id=f"{spec.name}_par")
         yield OptionList(*self._render_options(), id="options")
         lang = self._get_effective_lang()
-        yield Static(f"Taxonomy [{lang.upper()}] (one category per line): name | description | examples", id="taxonomy_label")
+        # markup=False: Rich would otherwise eat "[EN]" as a style tag.
+        yield Static(f"Taxonomy [{lang.upper()}] (one category per line): name | description | examples", id="taxonomy_label", markup=False)
         yield TextArea("\n".join(self._get_current_taxonomy_lines()).strip() + "\n", id="taxonomy", tab_behavior="indent")
         yield Static("", id="errors")
         yield Footer()
