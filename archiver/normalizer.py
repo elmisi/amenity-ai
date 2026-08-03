@@ -288,6 +288,7 @@ def normalize_items(
     chunk_size: int = 25,
     should_cancel: Optional[Callable[[], bool]] = None,
     provider_urls: Optional[Mapping[str, str]] = None,
+    limiter=None,
 ) -> NormalizationResult:
     provider_urls = provider_urls or {}
     allowed = taxonomy.allowed_names
@@ -436,6 +437,7 @@ def normalize_items(
             think=False,
             keep_alive="5m",
             options=_normalize_options(len(batch)),
+            limiter=limiter,
         )
         if gen.error:
             if len(batch) > 1:
@@ -492,6 +494,7 @@ def normalize_items_with_fallback(
     chunk_size: int = 25,
     should_cancel: Optional[Callable[[], bool]] = None,
     provider_urls: Optional[Mapping[str, str]] = None,
+    limiter=None,
 ) -> NormalizationResult:
     """Try each model in order; return the first result without an infra error.
 
@@ -502,7 +505,7 @@ def normalize_items_with_fallback(
         result = normalize_items(
             items=items, model=model, provider_urls=provider_urls, taxonomy=taxonomy,
             output_language=output_language, filename_separator=filename_separator,
-            chunk_size=chunk_size, should_cancel=should_cancel,
+            chunk_size=chunk_size, should_cancel=should_cancel, limiter=limiter,
         )
         last = result
         if result.error is None or result.error == "Cancelled" or (should_cancel and should_cancel()):
