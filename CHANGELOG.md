@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-08-03
+
+- The scan phase now works on several files at once instead of one at a time.
+  On a real vLLM the measured knee is four concurrent requests: below it the
+  server is idle, above it throughput stops improving and per-file latency
+  grows. A twelve-file run went from 314s to 90s.
+- The limit belongs to the provider, not to the app: vLLM defaults to 4,
+  Ollama and ds4 to 1, and each is editable next to its endpoint in Settings.
+  ds4 answers one caller at a time, so nothing may flood it; for Ollama we
+  cannot see `OLLAMA_NUM_PARALLEL`, so the conservative default stands until
+  you raise it.
+- The status line reports the run rather than the table: queued, in flight,
+  done, plus throughput and an estimated time left. Stopping now says how many
+  requests it is waiting for, since a request already sent cannot be recalled.
+  Work already finished when you stop is kept, not discarded.
+- The banner judges the setup by role instead of by Ollama alone. With Ollama
+  deliberately stopped and vLLM covering both roles it showed a permanent red
+  error; a provider that is down while the roles are covered is now a warning.
+- A file that crashes during extraction is marked as an error and the run
+  carries on. It used to escape the loop and leave the interface stuck on
+  "running" for good.
+- Cache writes are batched instead of one per file, so a fast run cannot stall
+  the interface by re-serialising the whole cache between files.
+
 ## [0.12.3] - 2026-08-02
 
 - Everything the app says is in English again. The provider redesign had
