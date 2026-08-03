@@ -34,7 +34,7 @@ from .ui_details import render_details
 from .task_state import TaskState
 from .help_screen import HelpScreen
 from .doctor_screen import DoctorScreen
-from .ui_runtime import banner_for_state, count_statuses, derive_task_state, provider_problem
+from .ui_runtime import banner_for_state, count_statuses, derive_task_state, runtime_problem
 from .item_mutations import mark_item_classifying, mark_item_scanning, reset_item_to_pending, unclassify_item
 from .open_file import open_with_default_app
 from .ui_files_table import build_file_table_rows
@@ -992,7 +992,7 @@ class ArchiverApp(App):
         counts = count_statuses(self._scan_items)
         state = derive_task_state(counts=counts, analysis=self._analysis_task, scan=self._scan_task, archive=self._archive_task)
 
-        problem, severity = provider_problem(self._discovery)
+        problem, severity = runtime_problem(self._discovery, self.settings)
         banner_text, banner_style = banner_for_state(
             state=state,
             scanning=counts.scanning,
