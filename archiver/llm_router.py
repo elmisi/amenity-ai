@@ -6,18 +6,23 @@ the cache, the UI — so no extra state is needed to know where a model comes
 from. Ids with no known prefix come from configs written before 0.12.0 and
 count as Ollama.
 
-The layer is stateless: one backend per call, no shared mutable state, so a
-future parallel scan will not have to touch it.
+The layer holds no state of its own: one backend per call, and the concurrency
+limit arrives as an argument rather than living here, so a parallel scan needs
+no coordination inside this module.
 """
 from __future__ import annotations
 
 import base64
-from typing import Any, Mapping, Optional
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from .llm_backend import LLMResponse
 from .ollama_client import OllamaBackend, OllamaGenerateResult
 from .openai_client import OpenAICompatBackend
 from .providers import KIND_OLLAMA, split_model_id
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .concurrency import ConcurrencyLimiter
 
 
 def _to_legacy(response: LLMResponse, *, model: str) -> OllamaGenerateResult:
@@ -51,6 +56,7 @@ def generate(
     keep_alive: str | int | None = None,
     options: Optional[dict[str, Any]] = None,
     max_model_len: Optional[int] = None,
+    limiter: Optional["ConcurrencyLimiter"] = None,
 ) -> OllamaGenerateResult:
     backend, spec, bare_id = _resolve(model, provider_urls)
     if backend is None:
@@ -69,7 +75,12 @@ def generate(
     )
     if spec.kind != KIND_OLLAMA:
         kwargs["max_model_len"] = max_model_len
-    return _to_legacy(backend.generate(**kwargs), model=model)
+    # The slot wraps the request and nothing else: building a prompt does not
+    # occupy the server, and holding a slot while doing it would waste it.
+    ctx = limiter.slot(spec.name) if limiter is not None else nullcontext()
+    with ctx:
+        response = backend.generate(**kwargs)
+    return _to_legacy(response, model=model)
 
 
 def generate_with_image_file(
@@ -79,6 +90,7 @@ def generate_with_image_file(
     image_path: str,
     provider_urls: Mapping[str, str],
     timeout_s: float = 180.0,
+    limiter: Optional["ConcurrencyLimiter"] = None,
 ) -> OllamaGenerateResult:
     with open(image_path, "rb") as handle:
         b64 = base64.b64encode(handle.read()).decode("ascii")
@@ -90,6 +102,7 @@ def generate_with_image_file(
         timeout_s=timeout_s,
         images_b64=[b64],
         keep_alive="5m",
+        limiter=limiter,
         # A one-line caption has nothing to reason about, and a reasoning
         # model spends an order of magnitude more on it. On Ollama the flag
         # stays unset: not all of its vision models accept it, and the cost
