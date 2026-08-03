@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.1] - 2026-08-03
+
+- Classification sends its chunks concurrently too, through the same
+  per-provider limit as the scan. Thirty-six files in chunks of twelve went
+  from 154s to 59s, with identical categories, years and names.
+- Chunk size is deliberately unchanged: a longer prompt is a longer request
+  with more output and worse answers. Three requests of twelve at once beats
+  one request of thirty-six.
+- Each chunk is now independent. A chunk that failed used to end the whole
+  pass and discard every chunk after it; the healthy ones now still produce
+  their results, and the error is reported alongside them. A cancelled run
+  still reports itself as cancelled ahead of any other error.
+- Fixes a latent bug the same change exposed: the single-item recovery path
+  tested a dictionary already filled by earlier chunks, so it could never fire
+  after the first one.
+
 ## [0.13.0] - 2026-08-03
 
 - The scan phase now works on several files at once instead of one at a time.
