@@ -123,7 +123,7 @@ If a PDF has no extractable text (i.e. it's effectively an image), or if you sca
 
 ### `.doc` / `.xls` extraction (optional)
 `amenity-ai` can extract text from:
-- `.docx` and `.xlsx` without extra dependencies (best-effort)
+- `.docx`, `.xlsx`, `.pptx` and `.eml` without extra dependencies (best-effort)
 - `.doc` and `.xls` via LibreOffice (best-effort)
 
 - Ubuntu / Linux Mint:

@@ -178,3 +178,5 @@ class HtmlExtractMeta:
 | `html/htm` | `textish_html.py` | (none, uses regex) |
 | `csv` | `textish_csv.py` | (none, uses csv module) |
 | `yaml/yml` | `textish_yaml.py` | (none) |
+| `pptx` | `textish_pptx.py` | (none, uses zipfile + xml.etree; legacy `.ppt` not supported) |
+| `eml` | `textish_eml.py` | (none, uses email module) |

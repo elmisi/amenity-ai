@@ -21,6 +21,8 @@ def extract_textish_with_meta(
     - .rtf: prefer `unrtf` if available, fallback to naive stripping
     - .svg: parse XML and collect <text>/<title>/<desc> plus raw text nodes
     - .kmz: read embedded .kml (zip) and extract placemarks (best-effort)
+    - .pptx: read slide XML from the zip (title, author, date, slide text)
+    - .eml: headers, preferred body part and attachment names
     """
     ext = path.suffix.lower().lstrip(".")
     t0 = time.perf_counter()
@@ -93,6 +95,22 @@ def extract_textish_with_meta(
         if not text:
             return None, "No extractable YAML content", None
         return text, "yaml", TextExtractMeta(method="yaml", extract_time_s=time.perf_counter() - t0)
+
+    if ext == "pptx":
+        from .textish_pptx import extract_pptx_text
+
+        text = extract_pptx_text(path, max_chars=max_chars)
+        if not text:
+            return None, "No extractable PPTX text", None
+        return text, "pptx", TextExtractMeta(method="pptx", extract_time_s=time.perf_counter() - t0)
+
+    if ext == "eml":
+        from .textish_eml import extract_eml_text
+
+        text = extract_eml_text(path, max_chars=max_chars)
+        if not text:
+            return None, "No extractable email content", None
+        return text, "eml", TextExtractMeta(method="eml", extract_time_s=time.perf_counter() - t0)
 
     return None, "Unsupported text type", None
 
