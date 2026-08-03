@@ -71,6 +71,7 @@ def main() -> None:
             source_root=args.source,
             archive_root=args.archive,
             providers=cfg.providers,
+        provider_concurrency=cfg.provider_concurrency,
             facts_model=cfg.facts_model,
             classify_model=cfg.classify_model,
             vision_model=cfg.vision_model,
@@ -100,6 +101,7 @@ def main() -> None:
         ocr_mode=cfg.ocr_mode,
         undated_folder_name=cfg.undated_folder_name,
         providers=cfg.providers,
+        provider_concurrency=cfg.provider_concurrency,
         skip_initial_setup=skip_setup,
     )
     # Disable mouse tracking so the terminal can do native text selection (copy with mouse).
