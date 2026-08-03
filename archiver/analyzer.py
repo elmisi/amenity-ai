@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Mapping, Optional
 from .llm_router import generate
 
 from .extractors.image import extract_image_smart
-from .extractors.registry import extract_with_meta
+from .extractors.registry import EXTRACTABLE_TEXT_KINDS, OFFICE_KINDS, extract_with_meta
 from .scanner import ScanItem
 from .taxonomy import DEFAULT_TAXONOMY_LINES, Taxonomy, parse_taxonomy_lines
 from .utils_json import extract_json_dict
@@ -395,12 +395,12 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
     def skipped(reason: str) -> FactsResult:
         return FactsResult(status="skipped", reason=reason)
 
-    if item.kind in {"pdf", "doc", "docx", "odt", "xls", "xlsx", "json", "md", "txt", "rtf", "svg", "kmz"}:
+    if item.kind in EXTRACTABLE_TEXT_KINDS:
         text, reason, meta = extract_with_meta(kind=item.kind, path=path, ocr_mode=config.ocr_mode)
         if not text:
             if item.kind == "pdf":
                 fallback = "No extractable PDF text"
-            elif item.kind in {"doc", "docx", "odt", "xls", "xlsx"}:
+            elif item.kind in OFFICE_KINDS:
                 fallback = "No extractable office text"
             else:
                 fallback = "No extractable text"

@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.2] - 2026-08-03
+
+- csv, html, yaml and gpx files are scanned again. Their extractors have
+  existed all along, but the analyzer kept its own twin list of supported
+  kinds and the two had drifted apart, so these files were reported
+  "Unsupported file type" — 40 of the 68 skips in one real 950-file scan.
+  The analyzer now derives its dispatch from the extractor registry, and a
+  test pins the whole chain so the lists cannot drift again.
+- `k` requeues skipped and error rows as pending, touching nothing else.
+  Skips are often systematic — a file type the analyzer could not reach, a
+  provider that was down — and the only remedies were `r` once per row or
+  `R`, which throws away every good result along with the bad ones.
+
 ## [0.13.1] - 2026-08-03
 
 - Classification sends its chunks concurrently too, through the same

@@ -86,6 +86,7 @@ class ArchiverApp(App):
         Binding("return", "open_file", "Open file", show=False),
         Binding("R", "reset_all", "Reset all", show=False),
         Binding("U", "unclassify_all", "Unclassify all", show=False),
+        Binding("k", "requeue_skipped", "Requeue skipped", show=False),
     ]
 
     def __init__(self, settings: Settings) -> None:
@@ -283,6 +284,35 @@ class ArchiverApp(App):
         files.update_cell(key, "category", "")
         files.update_cell(key, "year", "")
         self._update_details(row_index)
+        self._render_notes()
+
+    async def action_requeue_skipped(self) -> None:
+        """Put skipped and error rows back in the queue, touching nothing else.
+
+        The alternative today is `r` once per row or `R`, which throws away
+        every good result along with the bad ones. Skips are often systematic —
+        a file type the analyzer could not reach, a provider that was down — so
+        after the cause is fixed they are re-run as a group with `S`.
+        """
+        if self._analysis_task.running or self._scan_task.running or self._archive_task.running:
+            return
+        files = self.query_one("#files", DataTable)
+        any_changed = False
+        for idx, it in enumerate(list(self._scan_items)):
+            if it.status not in {"skipped", "error"}:
+                continue
+            any_changed = True
+            updated = reset_item_to_pending(it)
+            self._scan_items[idx] = updated
+            key = str(updated.path)
+            files.update_cell(key, "status", status_cell("pending"))
+            files.update_cell(key, "category", "")
+            files.update_cell(key, "year", "")
+            if self._cache:
+                self._cache.upsert(updated)
+        if any_changed and self._cache:
+            self._cache.save()
+        self._update_details_from_cursor()
         self._render_notes()
 
     async def action_unclassify_all(self) -> None:
