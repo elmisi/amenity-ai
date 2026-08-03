@@ -180,3 +180,7 @@ class HtmlExtractMeta:
 | `yaml/yml` | `textish_yaml.py` | (none) |
 | `pptx` | `textish_pptx.py` | (none, uses zipfile + xml.etree; legacy `.ppt` not supported) |
 | `eml` | `textish_eml.py` | (none, uses email module) |
+| `ods` | `office.py` | (none; same content.xml container as odt) |
+| `ics` | `textish_ics.py` | (none) |
+
+`.webp` needs no extractor of its own: it maps to the `image` kind and rides the vision/OCR pipeline.

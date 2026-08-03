@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-08-03
+
+- Three more file types, each riding plumbing that already existed:
+  - `.webp` joins the image pipeline (vision + OCR). The vision path already
+    sniffed its MIME type from the magic bytes; the extension only had to be
+    let in. One real scan counted 17 of these sitting unscanned.
+  - `.ods` reuses the odt extractor: every ODF document keeps its text in
+    the same `content.xml` container, so spreadsheet cells come out with the
+    machinery that was already there.
+  - `.ics` gets a small stdlib extractor: calendar name and events with
+    summary, date, location and description. Dates are rewritten with dashes
+    ("20240712" → "2024-07-12") because the analyzer's year hint refuses a
+    year followed by more digits — the raw form would feed it nothing.
+
 ## [0.14.0] - 2026-08-03
 
 - Two new file types, both surfaced by a real scan that found 6 of one and 11

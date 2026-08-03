@@ -14,9 +14,9 @@ ExtractMeta = Union[PdfExtractMeta, OfficeExtractMeta, TextExtractMeta]
 # dispatch from these instead of keeping a twin list: the two once drifted
 # apart, and csv/html/yaml/gpx files were reported "Unsupported file type"
 # while their extractors sat here unused.
-OFFICE_KINDS: frozenset[str] = frozenset({"doc", "docx", "odt", "xls", "xlsx"})
+OFFICE_KINDS: frozenset[str] = frozenset({"doc", "docx", "odt", "ods", "xls", "xlsx"})
 TEXTISH_KINDS: frozenset[str] = frozenset(
-    {"json", "md", "txt", "rtf", "svg", "kmz", "gpx", "html", "csv", "yaml", "pptx", "eml"}
+    {"json", "md", "txt", "rtf", "svg", "kmz", "gpx", "html", "csv", "yaml", "pptx", "eml", "ics"}
 )
 EXTRACTABLE_TEXT_KINDS: frozenset[str] = frozenset({"pdf"}) | OFFICE_KINDS | TEXTISH_KINDS
 

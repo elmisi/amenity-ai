@@ -11,15 +11,19 @@ KIND_BY_EXTENSION: dict[str, str] = {
     "jpg": "image",
     "jpeg": "image",
     "png": "image",
+    "webp": "image",
     # Office
     "doc": "doc",
     "docx": "docx",
     "odt": "odt",
+    "ods": "ods",
     "xls": "xls",
     "xlsx": "xlsx",
     "pptx": "pptx",
     # Email
     "eml": "eml",
+    # Calendar
+    "ics": "ics",
     # Text-ish
     "json": "json",
     "md": "md",
