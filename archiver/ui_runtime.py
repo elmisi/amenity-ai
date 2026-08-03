@@ -136,7 +136,9 @@ def banner_for_state(
             msg += f" • {problem}"
         return (msg, "bold white on blue")
     if state.startswith("classifying") and classifying:
-        msg = "RUNNING: classifying scanned files…"
+        # Since chunks stream, `classifying` rows are the ones actually being
+        # worked on right now, so the count is honest.
+        msg = f"RUNNING: classifying — {classifying} in flight"
         if problem:
             msg += f" • {problem}"
         return (msg, "bold white on blue")

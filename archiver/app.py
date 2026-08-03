@@ -686,14 +686,78 @@ class ArchiverApp(App):
         self._render_notes()
 
         files = self.query_one("#files", DataTable)
-        for it in targets:
-            path_str = str(it.path)
-            idx = self._scan_index_by_path.get(path_str)
-            if idx is None:
-                continue
-            self._scan_items[idx] = mark_item_classifying(self._scan_items[idx])
-            files.update_cell(path_str, "status", status_cell("classifying"))
-        self._render_notes()
+
+        def begin_run(total: int) -> None:
+            self._run_total = total
+            self._run_completed = 0
+            self._run_in_flight = 0
+            self._run_skipped = 0
+            self._run_error = 0
+            self._run_completions.clear()
+            self._run_started_at = time.monotonic()
+            self._cache_throttle = SaveThrottle()
+            self._render_notes()
+
+        def mark_chunk(paths: list[str]) -> None:
+            # Only the rows whose chunk is actually in flight turn blue; the
+            # rest stay `scanned` until their turn comes.
+            for path_str in paths:
+                idx = self._scan_index_by_path.get(path_str)
+                if idx is None:
+                    continue
+                if self._scan_items[idx].status != "scanned":
+                    continue
+                self._scan_items[idx] = mark_item_classifying(self._scan_items[idx])
+                files.update_cell(path_str, "status", status_cell("classifying"))
+                self._run_in_flight += 1
+            self._render_notes()
+
+        def apply_chunk(paths: list[str], partial: dict, elapsed: float) -> None:
+            now = time.monotonic()
+            for path_str in paths:
+                idx = self._scan_index_by_path.get(path_str)
+                if idx is None:
+                    continue
+                cur = self._scan_items[idx]
+                if cur.status != "classifying":
+                    continue
+                upd = partial.get(path_str)
+                if upd is None:
+                    # Its chunk failed; the sweep after the whole batch will
+                    # give it the aggregate reason. It stays out of the counts
+                    # so the progress line never overstates what is done.
+                    continue
+                updated = _classified_item(cur, upd, elapsed)
+                self._scan_items[idx] = updated
+                self._run_in_flight = max(0, self._run_in_flight - 1)
+                self._run_completed += 1
+                self._run_completions.append(now)
+                files.update_cell(path_str, "status", status_cell(updated.status))
+                files.update_cell(path_str, "category", updated.category or "")
+                files.update_cell(path_str, "year", updated.reference_year or "")
+                if files.cursor_row == idx:
+                    self._update_details(idx)
+                if self._cache:
+                    self._cache.upsert(updated)
+            # Partial saves: a crash at minute 19 of 20 keeps 19 minutes of work.
+            if self._cache and self._cache_throttle.record():
+                self._cache.save()
+            self._render_notes()
+
+        def _classified_item(cur: ScanItem, upd: dict, elapsed: float) -> ScanItem:
+            return replace(
+                cur,
+                status="classified",
+                category=upd.get("category") or cur.category or "unknown",
+                reference_year=upd.get("reference_year") or cur.reference_year,
+                proposed_name=upd.get("proposed_name") or cur.proposed_name,
+                summary=upd.get("summary") or cur.summary,
+                model_used=str(upd.get("model_used") or cur.model_used or model),
+                reason=None,
+                classify_time_s=elapsed,
+                classify_llm_time_s=elapsed,
+                classify_model_used=str(upd.get("model_used") or cur.model_used or model),
+            )
 
         def apply_result(path_str: str, updated: ScanItem) -> None:
             idx = self._scan_index_by_path.get(path_str)
@@ -713,6 +777,8 @@ class ArchiverApp(App):
                     if item.status in {"classified", "scanned"}:
                         self._cache.upsert(item)
                 self._cache.save()
+            self._run_in_flight = 0
+            self._run_total = 0
             self._analysis_task.running = False
             self._render_notes()
 
@@ -721,6 +787,7 @@ class ArchiverApp(App):
             try:
                 batch_size = 12 if len(targets) > 12 else max(4, len(targets))
                 t0 = time.perf_counter()
+                self.call_from_thread(begin_run, len(targets))
                 res = normalize_items_with_fallback(
                     items=targets,
                     models=text_models,
@@ -732,6 +799,10 @@ class ArchiverApp(App):
                     should_cancel=lambda: worker.is_cancelled,
                     limiter=ConcurrencyLimiter.from_limits(
                         self.settings.provider_concurrency
+                    ),
+                    on_chunk_start=lambda paths: self.call_from_thread(mark_chunk, paths),
+                    on_chunk_done=lambda paths, partial: self.call_from_thread(
+                        apply_chunk, paths, partial, time.perf_counter() - t0
                     ),
                 )
                 llm_elapsed = time.perf_counter() - t0
@@ -752,19 +823,7 @@ class ArchiverApp(App):
                         continue
                     upd = res.by_path.get(path_str) if res.by_path else None
                     if upd:
-                        updated = replace(
-                            cur,
-                            status="classified",
-                            category=upd.get("category") or cur.category or "unknown",
-                            reference_year=upd.get("reference_year") or cur.reference_year,
-                            proposed_name=upd.get("proposed_name") or cur.proposed_name,
-                            summary=upd.get("summary") or cur.summary,
-                            model_used=str(upd.get("model_used") or cur.model_used or model),
-                            reason=None,
-                            classify_time_s=llm_elapsed,
-                            classify_llm_time_s=llm_elapsed,
-                            classify_model_used=str(upd.get("model_used") or cur.model_used or model),
-                        )
+                        updated = _classified_item(cur, upd, llm_elapsed)
                     else:
                         updated = replace(
                             cur,

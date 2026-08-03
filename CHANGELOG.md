@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-08-03
+
+- Classification reports progress as it goes. A mass classification of ~1000
+  files is ~90 requests over tens of minutes; the interface used to mark
+  every row "classifying" at minute zero, then apply every result and write
+  the cache only when the whole batch ended — silent for its entire
+  duration, and a crash at minute 19 lost 19 minutes of work. Now rows turn
+  blue only when their chunk is actually in flight, results land chunk by
+  chunk, the status line shows queued / in flight / done with throughput and
+  ETA, the banner counts what is really being worked on, and the cache is
+  saved as chunks complete, so interrupted work survives.
+
 ## [0.16.0] - 2026-08-03
 
 - `parallel: 0` disables a provider while keeping its URL. Blanking the URL
