@@ -20,7 +20,8 @@ def test_stored_values_win_and_are_clamped(tmp_path, monkeypatch):
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"provider_concurrency": {"vllm": 8, "ollama": 0, "ds4": 999}}))
     cfg = load_config()
-    assert cfg.provider_concurrency == {"vllm": 8, "ollama": 1, "ds4": 16}
+    # ollama 0 survives: since 0.16.0 it means "disabled, URL kept".
+    assert cfg.provider_concurrency == {"vllm": 8, "ollama": 0, "ds4": 16}
 
 
 def test_unknown_provider_names_are_dropped():

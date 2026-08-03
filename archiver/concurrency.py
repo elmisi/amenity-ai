@@ -22,12 +22,16 @@ MAX_SLOTS = 16
 
 
 def clamp_limit(value: object, *, default: int) -> int:
-    """Coerce user input to a usable slot count, falling back to `default`."""
+    """Coerce user input to a usable slot count, falling back to `default`.
+
+    Zero is legal and means "provider disabled": the URL stays in the config,
+    but discovery skips the provider and nothing routes to it.
+    """
     try:
         n = int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
-    return max(1, min(MAX_SLOTS, n))
+    return max(0, min(MAX_SLOTS, n))
 
 
 @dataclass(frozen=True)
@@ -42,7 +46,11 @@ class ConcurrencyLimiter:
             if name in merged:
                 merged[name] = clamp_limit(value, default=merged[name])
         return cls(
-            slots={name: threading.Semaphore(n) for name, n in merged.items()},
+            # A zero-limit provider gets a one-permit semaphore, not a
+            # zero-permit one: disabling is enforced by routing (its URL is
+            # masked), and a semaphore nobody ever releases would turn a stray
+            # call into a deadlock instead of an explicit error.
+            slots={name: threading.Semaphore(max(1, n)) for name, n in merged.items()},
             limits=dict(merged),
         )
 

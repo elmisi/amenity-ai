@@ -71,6 +71,22 @@ class Settings:
                     limits[name] = clamp_limit(value, default=limits[name])
         object.__setattr__(self, "provider_concurrency", limits)
 
+    def disabled_providers(self) -> frozenset[str]:
+        """Providers switched off with parallel: 0. Their URL stays stored."""
+        return frozenset(
+            name for name, limit in self.provider_concurrency.items() if limit == 0
+        )
+
+    def enabled_provider_urls(self) -> dict[str, str]:
+        """The providers mapping with disabled ones masked to empty.
+
+        This is what discovery, analysis and classification consume: an empty
+        URL already means "do not call" everywhere downstream, so masking here
+        disables the provider without touching the stored configuration.
+        """
+        off = self.disabled_providers()
+        return {name: ("" if name in off else url) for name, url in self.providers.items()}
+
     def get_taxonomy_lines(self) -> tuple[str, ...]:
         """Get the taxonomy lines for the effective language."""
         from .taxonomy import get_default_taxonomy_for_language, get_effective_language

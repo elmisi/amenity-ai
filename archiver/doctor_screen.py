@@ -95,7 +95,9 @@ class DoctorScreen(ModalScreen[None]):
 
     def _diagnose(self) -> None:
         discovery = discover_providers(
-            self._settings.providers, probe_cache=load_probe_cache()
+            self._settings.providers,
+            probe_cache=load_probe_cache(),
+            disabled=self._settings.disabled_providers(),
         )
         report = run_doctor(
             discovery=discovery, settings=self._settings, probe=_network_probe

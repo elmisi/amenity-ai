@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Collection, Mapping, Optional
 from urllib.request import urlopen
 
 from .capabilities import (
@@ -191,11 +191,22 @@ def discover_providers(
     fetch: Optional[Callable[..., Any]] = None,
     probe_cache: Optional[Mapping[tuple[str, str], frozenset[str]]] = None,
     timeout_s: float = 2.5,
+    disabled: Collection[str] = (),
 ) -> DiscoveryResult:
     fetcher = fetch or _get_json
     cache = probe_cache if probe_cache is not None else {}
 
     def work(spec) -> ProviderStatus:
+        if spec.name in disabled:
+            # Switched off with parallel: 0. The URL is kept so the doctor
+            # line still names the endpoint being skipped.
+            return ProviderStatus(
+                name=spec.name,
+                url=provider_urls.get(spec.name, "") or "",
+                configured=False,
+                available=False,
+                detail="disabled (parallel 0)",
+            )
         status = _probe_one(
             spec, provider_urls.get(spec.name, "") or "", fetch=fetcher, timeout_s=timeout_s
         )
