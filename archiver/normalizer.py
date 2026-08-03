@@ -499,6 +499,8 @@ def normalize_items(
     should_cancel: Optional[Callable[[], bool]] = None,
     provider_urls: Optional[Mapping[str, str]] = None,
     limiter=None,
+    on_chunk_start: Optional[Callable[[list[str]], None]] = None,
+    on_chunk_done: Optional[Callable[[list[str], dict], None]] = None,
 ) -> NormalizationResult:
     """Normalise every item, one chunk of `chunk_size` per request.
 
@@ -526,7 +528,14 @@ def normalize_items(
         return NormalizationResult(by_path={}, model_used=model)
 
     def run(batch: list[ScanItem]) -> tuple[dict, Optional[str]]:
-        return _normalize_chunk(
+        # Checked before announcing the chunk: a cancelled run must not claim
+        # rows are in flight that will never be worked on.
+        if should_cancel and should_cancel():
+            return {}, "Cancelled"
+        paths = [str(it.path) for it in batch]
+        if on_chunk_start is not None:
+            on_chunk_start(paths)
+        partial, error = _normalize_chunk(
             batch,
             model=model,
             provider_urls=provider_urls,
@@ -540,6 +549,11 @@ def normalize_items(
             sep_desc=sep_desc,
             sep_label=sep_label,
         )
+        # Reported even on failure: whoever is watching needs to know the
+        # chunk is no longer in flight, with however much it produced.
+        if on_chunk_done is not None:
+            on_chunk_done(paths, partial)
+        return partial, error
 
     workers = 1
     if limiter is not None:
@@ -577,6 +591,8 @@ def normalize_items_with_fallback(
     should_cancel: Optional[Callable[[], bool]] = None,
     provider_urls: Optional[Mapping[str, str]] = None,
     limiter=None,
+    on_chunk_start: Optional[Callable[[list[str]], None]] = None,
+    on_chunk_done: Optional[Callable[[list[str], dict], None]] = None,
 ) -> NormalizationResult:
     """Try each model in order; return the first result without an infra error.
 
@@ -588,6 +604,7 @@ def normalize_items_with_fallback(
             items=items, model=model, provider_urls=provider_urls, taxonomy=taxonomy,
             output_language=output_language, filename_separator=filename_separator,
             chunk_size=chunk_size, should_cancel=should_cancel, limiter=limiter,
+            on_chunk_start=on_chunk_start, on_chunk_done=on_chunk_done,
         )
         last = result
         if result.error is None or result.error == "Cancelled" or (should_cancel and should_cancel()):
