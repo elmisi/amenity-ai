@@ -140,14 +140,20 @@ RTF is supported without dependencies via a naive fallback, but you get better r
 Three providers are supported. You configure one URL each and nothing more — on startup
 the app queries them in parallel and discovers which models are available:
 
-| provider | endpoint queried | notes |
-|---|---|---|
-| `ollama` | `GET /api/tags` | default `http://localhost:11434`; the only one that can install models |
-| `vllm` | `GET /v1/models` | any vLLM server; empty by default |
-| `ds4` | `GET /v1/models` | any other OpenAI-compatible server (llama.cpp, …); empty by default |
+| provider | endpoint queried | parallel | notes |
+|---|---|---|---|
+| `ollama` | `GET /api/tags` | 1 | default `http://localhost:11434`; the only one that can install models |
+| `vllm` | `GET /v1/models` | 4 | any vLLM server; empty by default |
+| `ds4` | `GET /v1/models` | 1 | any other OpenAI-compatible server (llama.cpp, …); empty by default |
 
 All three may run on another machine on your local network. Leave a URL empty to disable
 that provider. Nothing is sent outside the machines you point the app at.
+
+**Parallel** is how many requests a scan sends that provider at once, editable beside each
+endpoint in Settings. The default of 4 for vLLM is measured, not guessed: on a 27B model
+throughput stops improving past four concurrent requests and per-file latency keeps
+growing. ds4 stays at 1 because it answers one caller at a time. Ollama stays at 1 because
+`OLLAMA_NUM_PARALLEL` is not visible to us — raise it if your server allows more.
 
 Models carry their provider as a prefix — `ollama:qwen3:8b`, `vllm:…`, `ds4:…` — so you can
 always tell where one comes from. With models set to `auto`, candidates are ordered by

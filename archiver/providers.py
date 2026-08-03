@@ -2,8 +2,8 @@
 
 The single source of truth for names, prefixes, priority and the ways
 providers differ. The declaration order of PROVIDERS IS the priority the
-ranking uses: vllm holds up under contention and will scale once scanning
-runs in parallel; ollama is always there; ds4 serves one request at a
+ranking uses: vllm holds up under contention and is the one that scales when
+scanning runs in parallel; ollama is always there; ds4 serves one request at a
 time, so a long scan would monopolise it.
 """
 from __future__ import annotations
@@ -26,6 +26,11 @@ class ProviderSpec:
     # not enough: what matters is WHICH key to send.
     thinking_off: Mapping[str, Any] = field(default_factory=dict)
     supports_install: bool = False
+    # How many requests this provider answers usefully at once. vLLM batches
+    # them; ds4 serves one caller at a time; for Ollama we cannot see
+    # OLLAMA_NUM_PARALLEL, and asking for more than it grants only queues
+    # server-side while the UI claims work that is not happening.
+    max_concurrency: int = 1
 
 
 PROVIDERS: tuple[ProviderSpec, ...] = (
@@ -34,6 +39,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         KIND_OPENAI_COMPAT,
         "vllm:",
         thinking_off={"chat_template_kwargs": {"enable_thinking": False}},
+        max_concurrency=4,
     ),
     ProviderSpec(
         "ollama",
@@ -92,3 +98,7 @@ def join_model_id(provider_name: str, bare_id: str) -> str:
 
 def default_provider_urls() -> dict[str, str]:
     return {spec.name: spec.default_url for spec in PROVIDERS}
+
+
+def default_provider_concurrency() -> dict[str, int]:
+    return {spec.name: spec.max_concurrency for spec in PROVIDERS}

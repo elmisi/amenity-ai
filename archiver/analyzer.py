@@ -5,7 +5,7 @@ import re
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional
 
 from .llm_router import generate
 
@@ -29,6 +29,9 @@ from .prompts import (
     build_json_repair_prompt,
 )
 
+if TYPE_CHECKING:  # pragma: no cover
+    from .concurrency import ConcurrencyLimiter
+
 _DEFAULT_TAXONOMY, _ = parse_taxonomy_lines(DEFAULT_TAXONOMY_LINES)
 
 
@@ -43,6 +46,9 @@ class AnalysisConfig:
     taxonomy: Taxonomy = _DEFAULT_TAXONOMY
     filename_separator: str = "space"  # space | underscore | dash
     ocr_mode: str = "balanced"  # fast | balanced | high
+    # Absent when a single item is analysed on its own: with nothing else in
+    # flight there is nothing to regulate.
+    limiter: Optional["ConcurrencyLimiter"] = None
 
     def __post_init__(self) -> None:
         if self.provider_urls is None:
@@ -195,7 +201,13 @@ def _truncate_raw_output(text: str) -> str:
     return raw[: _MAX_LLM_RAW_OUTPUT_CHARS - 200] + "\n...[truncated]...\n" + raw[-200:]
 
 
-def _repair_json_dict_via_llm(*, model: str, raw_output: str, provider_urls: Mapping[str, str]) -> Optional[str]:
+def _repair_json_dict_via_llm(
+    *,
+    model: str,
+    raw_output: str,
+    provider_urls: Mapping[str, str],
+    limiter: Optional["ConcurrencyLimiter"] = None,
+) -> Optional[str]:
     snippet = _truncate_raw_output(raw_output)
     prompt = build_json_repair_prompt(snippet=snippet)
     try:
@@ -208,6 +220,7 @@ def _repair_json_dict_via_llm(*, model: str, raw_output: str, provider_urls: Map
             think=False,
             keep_alive="5m",
             options=_JSON_REPAIR_OPTIONS,
+            limiter=limiter,
         )
     except Exception:
         return None
@@ -282,6 +295,7 @@ def _extract_facts_from_text(
     year_hint_filename: Optional[str],
     year_hint_text: Optional[str],
     output_language: str,
+    limiter: Optional["ConcurrencyLimiter"] = None,
 ) -> FactsResult:
     prompt = build_facts_extraction_prompt(
         filename=filename,
@@ -301,18 +315,21 @@ def _extract_facts_from_text(
             think=False,
             keep_alive="5m",
             options=_FACTS_GENERATE_OPTIONS,
+            limiter=limiter,
         )
     except Exception as exc:  # noqa: BLE001
-        return FactsResult(status="error", reason=f"LLM errore: {type(exc).__name__}", model_used=model)
+        return FactsResult(status="error", reason=f"LLM error: {type(exc).__name__}", model_used=model)
     if gen.error:
-        return FactsResult(status="error", reason=f"LLM errore: {gen.error}", model_used=model)
+        return FactsResult(status="error", reason=f"LLM error: {gen.error}", model_used=model)
 
     out = gen.response
     data = _extract_json(out)
     llm_raw_output: Optional[str] = None
     if not isinstance(data, dict):
         llm_raw_output = _truncate_raw_output(out)
-        repaired = _repair_json_dict_via_llm(model=model, raw_output=out, provider_urls=provider_urls)
+        repaired = _repair_json_dict_via_llm(
+            model=model, raw_output=out, provider_urls=provider_urls, limiter=limiter
+        )
         if repaired:
             data = _extract_json(repaired)
     if not isinstance(data, dict):
@@ -413,6 +430,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
                 year_hint_filename=year_hint_filename,
                 year_hint_text=year_hint_text,
                 output_language=config.output_language,
+                limiter=config.limiter,
             )
             if res.status != "error":
                 break
@@ -442,6 +460,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
             provider_urls=config.provider_urls,
             ocr_mode=config.ocr_mode,
             max_chars=max_chars,
+            limiter=config.limiter,
         )
 
         if not img_result.content:
@@ -471,6 +490,7 @@ def extract_facts_item(item: ScanItem, *, config: AnalysisConfig) -> FactsResult
                 year_hint_filename=year_hint_filename,
                 year_hint_text=year_hint_text,
                 output_language=config.output_language,
+                limiter=config.limiter,
             )
             if res.status != "error":
                 break

@@ -3,11 +3,11 @@
 This module provides the OllamaBackend class for interacting with Ollama,
 implementing the LLMBackend protocol from llm_backend.py.
 
-Backward-compatible module-level functions are also provided.
+Everything goes through llm_router, which builds a backend per call: there is
+no module-level state here for a parallel scan to contend over.
 """
 from __future__ import annotations
 
-import base64
 import json
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -116,68 +116,3 @@ class OllamaBackend(BaseLLMBackend):
                 error=f"{type(exc).__name__}: {exc}",
                 done=False,
             )
-
-
-# Backward-compatible module-level functions
-_default_backend: Optional[OllamaBackend] = None
-
-
-def _get_backend(base_url: str) -> OllamaBackend:
-    """Get or create a backend instance."""
-    global _default_backend
-    if _default_backend is None or _default_backend.base_url != base_url.rstrip("/"):
-        _default_backend = OllamaBackend(base_url)
-    return _default_backend
-
-
-def generate(
-    *,
-    model: str,
-    prompt: str,
-    base_url: str = "http://localhost:11434",
-    timeout_s: float = 120.0,
-    images_b64: Optional[list[str]] = None,
-    response_format: str | dict[str, Any] | None = None,
-    think: bool | str | None = None,
-    keep_alive: str | int | None = None,
-    options: Optional[dict[str, Any]] = None,
-) -> OllamaGenerateResult:
-    """Generate a response from Ollama (backward-compatible function)."""
-    backend = _get_backend(base_url)
-    response = backend.generate(
-        prompt=prompt,
-        model=model,
-        timeout_s=timeout_s,
-        images_b64=images_b64,
-        response_format=response_format,
-        think=think,
-        keep_alive=keep_alive,
-        options=options,
-    )
-    return OllamaGenerateResult(
-        response=response.text,
-        model=response.model,
-        done=response.done,
-        error=response.error,
-    )
-
-
-def generate_with_image_file(
-    *,
-    model: str,
-    prompt: str,
-    image_path: str,
-    base_url: str = "http://localhost:11434",
-    timeout_s: float = 180.0,
-) -> OllamaGenerateResult:
-    """Generate a response using an image file (backward-compatible function)."""
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("ascii")
-    return generate(
-        model=model,
-        prompt=prompt,
-        base_url=base_url,
-        timeout_s=timeout_s,
-        images_b64=[b64],
-        keep_alive="5m",
-    )

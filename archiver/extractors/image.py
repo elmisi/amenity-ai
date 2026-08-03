@@ -154,6 +154,7 @@ def caption_image(
     provider_urls: Mapping[str, str],
     timeout_s: float = 180.0,
     max_retries: int = 1,
+    limiter=None,
 ) -> tuple[str, ImageCaptionMeta]:
     """Try a list of vision models until one returns a caption (best-effort).
 
@@ -173,6 +174,7 @@ def caption_image(
                     image_path=str(image_path),
                     provider_urls=provider_urls,
                     timeout_s=timeout_s,
+                    limiter=limiter,
                 )
             except TimeoutError:
                 retries += 1
@@ -232,6 +234,7 @@ def extract_image_smart(
     ocr_mode: str,
     max_chars: int = 14000,
     vision_timeout_s: float = 120.0,
+    limiter=None,
 ) -> ImageExtractionResult:
     """Smart image extraction: vision first, then OCR only if document detected.
 
@@ -250,6 +253,7 @@ def extract_image_smart(
         prompt=vision_prompt,
         provider_urls=provider_urls,
         timeout_s=vision_timeout_s,
+        limiter=limiter,
     )
 
     if not caption:

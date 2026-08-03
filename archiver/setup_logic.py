@@ -21,6 +21,7 @@ def settings_from_setup(*, current: Settings, setup: SetupResult) -> Settings:
         ocr_mode=current.ocr_mode,
         undated_folder_name=current.undated_folder_name,
         providers=current.providers,
+        provider_concurrency=current.provider_concurrency,
         skip_initial_setup=current.skip_initial_setup,
     )
 
@@ -38,5 +39,6 @@ def app_config_from_settings(settings: Settings) -> AppConfig:
         ocr_mode=settings.ocr_mode,
         undated_folder_name=settings.undated_folder_name,
         providers=settings.providers,
+        provider_concurrency=settings.provider_concurrency,
     )
 

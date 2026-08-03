@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, Static, TextArea
 
 from .archive_picker_screen import ArchivePickerResult, ArchivePickerScreen
+from .concurrency import clamp_limit
 from .model_selection import ROLE_CLASSIFY, ROLE_FACTS, ROLE_VISION, rank_models
 from .providers import PROVIDER_NAMES, PROVIDERS
 from .taxonomy import (
@@ -34,6 +35,7 @@ class SettingsResult:
     undated_folder_name: str
     archive_root: Path
     providers: dict[str, str]
+    provider_concurrency: dict[str, int]
 
 
 class SettingsScreen(ModalScreen[SettingsResult]):
@@ -46,7 +48,9 @@ class SettingsScreen(ModalScreen[SettingsResult]):
     #taxonomy { height: 1fr; border: round $accent; }
     #errors { height: auto; color: $error; }
     .provider_label { height: auto; padding: 1 0 0 0; }
-    .provider_url { height: 3; }
+    .provider_row { height: 3; }
+    .provider_url { width: 1fr; }
+    .provider_par { width: 14; }
     """
 
     BINDINGS = [
@@ -71,12 +75,19 @@ class SettingsScreen(ModalScreen[SettingsResult]):
         undated_folder_name: str,
         archive_root: Path,
         providers: dict[str, str],
+        provider_concurrency: dict[str, int],
         available_models: tuple["ModelInfo", ...],
         provider_info: str,
     ) -> None:
         super().__init__()
         self._provider_info = provider_info.strip()
         self._providers = {name: (providers or {}).get(name, "") for name in PROVIDER_NAMES}
+        self._concurrency = {
+            spec.name: clamp_limit(
+                (provider_concurrency or {}).get(spec.name), default=spec.max_concurrency
+            )
+            for spec in PROVIDERS
+        }
         self._output_language = output_language if output_language in {"auto", "it", "en"} else "auto"
         self._taxonomies: dict[str, tuple[str, ...]] = dict(taxonomies) if taxonomies else {}
         self._facts_model = facts_model or "auto"
@@ -127,9 +138,13 @@ class SettingsScreen(ModalScreen[SettingsResult]):
             placeholder = spec.default_url or "empty = disabled"
             yield Static(f"{spec.name} endpoint ({placeholder}):",
                          classes="provider_label", id=f"{spec.name}_label")
-            yield Input(value=self._providers.get(spec.name, ""),
-                        placeholder=placeholder,
-                        classes="provider_url", id=f"{spec.name}_url")
+            with Horizontal(classes="provider_row"):
+                yield Input(value=self._providers.get(spec.name, ""),
+                            placeholder=placeholder,
+                            classes="provider_url", id=f"{spec.name}_url")
+                yield Input(value=str(self._concurrency[spec.name]),
+                            placeholder="parallel",
+                            classes="provider_par", id=f"{spec.name}_par")
         yield OptionList(*self._render_options(), id="options")
         lang = self._get_effective_lang()
         yield Static(f"Taxonomy [{lang.upper()}] (one category per line): name | description | examples", id="taxonomy_label")
@@ -162,6 +177,16 @@ class SettingsScreen(ModalScreen[SettingsResult]):
             out[spec.name] = value or spec.default_url
         return out
 
+    def _current_provider_concurrency(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for spec in PROVIDERS:
+            try:
+                raw = self.query_one(f"#{spec.name}_par", Input).value.strip()
+            except Exception:
+                raw = ""
+            out[spec.name] = clamp_limit(raw, default=self._concurrency[spec.name])
+        return out
+
     def action_cancel(self) -> None:
         self.dismiss(
             SettingsResult(
@@ -175,6 +200,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
                 providers=self._current_provider_urls(),
+                provider_concurrency=self._current_provider_concurrency(),
             )
         )
 
@@ -305,6 +331,7 @@ class SettingsScreen(ModalScreen[SettingsResult]):
                 undated_folder_name=self._undated_folder_name,
                 archive_root=self._archive_root,
                 providers=self._current_provider_urls(),
+                provider_concurrency=self._current_provider_concurrency(),
             )
         )
 

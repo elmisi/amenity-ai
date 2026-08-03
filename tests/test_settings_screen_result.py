@@ -26,5 +26,7 @@ def test_result_is_constructible_with_three_providers():
         undated_folder_name="undated",
         archive_root=Path("/tmp/archive"),
         providers={"ollama": "http://a.invalid", "vllm": "", "ds4": ""},
+        provider_concurrency={"ollama": 1, "vllm": 4, "ds4": 1},
     )
     assert set(result.providers) == {"ollama", "vllm", "ds4"}
+    assert set(result.provider_concurrency) == {"ollama", "vllm", "ds4"}

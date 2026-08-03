@@ -116,7 +116,7 @@ otherwise it degrades to `kind="hint"`. Two surfaces, one logic: `amenity-ai doc
 - Invalidation is explicit and user-driven (`r` reset row, `R` reset all, `u` unclassify keeps facts but clears classification)
 
 ### Task Orchestration
-- One long-running task (scan/classify/move) at a time, tracked by `TaskState` (`task_state.py`)
+- One long-running task (scan/classify/move) at a time, tracked by `TaskState` (`task_state.py`). Within the facts phase, files run through a `ThreadPoolExecutor`; the real regulator is `concurrency.py`'s `ConcurrencyLimiter` — one semaphore per provider, acquired inside `llm_router.generate` because a candidate fallback can send two files of the same run to different providers. Limits come from `ProviderSpec.max_concurrency` and are overridable per provider in Settings
 - Cancellation is cooperative: `x` sets `cancel_requested`; workers poll it (`should_cancel` callbacks) and stop between items
 - **Never block the Textual event loop** with I/O, OCR, or LLM calls — run them in workers; UI updates via `call_from_thread`
 
@@ -126,6 +126,7 @@ otherwise it degrades to `kind="hint"`. Two surfaces, one logic: `amenity-ai doc
 - **archiver/extractors/**: File format handlers — `../filetypes.py` maps extension → kind, `registry.py` dispatches kind → extractor
 - **archiver/prompts.py**: All LLM prompt templates (facts, classification)
 - **archiver/providers.py**: Provider registry — names, prefixes, priority, per-provider quirks
+- **archiver/concurrency.py**: `ConcurrencyLimiter` (one semaphore per provider) and the pool sizing for a run
 - **archiver/capabilities.py** / **probe_cache.py**: Capability detection and size parsing / persistence of conclusive probe results
 - **archiver/discovery.py** / **model_selection.py**: Parallel model discovery / role-based ranking
 - **archiver/llm_backend.py** / **ollama_client.py** / **openai_client.py**: `LLMBackend` protocol abstraction / Ollama HTTP wrapper / shared OpenAI-compatible backend (vLLM and ds4)

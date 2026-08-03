@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .providers import default_provider_urls
+from .concurrency import clamp_limit
+from .providers import default_provider_concurrency, default_provider_urls
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class Settings:
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
     providers: dict[str, str] = None  # type: ignore[assignment]
+    provider_concurrency: dict[str, int] = None  # type: ignore[assignment]
     skip_initial_setup: bool = False
 
     def __post_init__(self) -> None:
@@ -57,6 +59,12 @@ class Settings:
                 if name in merged and isinstance(url, str):
                     merged[name] = url.strip()
         object.__setattr__(self, "providers", merged)
+        limits = default_provider_concurrency()
+        if self.provider_concurrency:
+            for name, value in self.provider_concurrency.items():
+                if name in limits:
+                    limits[name] = clamp_limit(value, default=limits[name])
+        object.__setattr__(self, "provider_concurrency", limits)
 
     def get_taxonomy_lines(self) -> tuple[str, ...]:
         """Get the taxonomy lines for the effective language."""

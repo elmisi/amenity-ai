@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .providers import PROVIDER_NAMES, default_provider_urls, split_model_id
+from .concurrency import clamp_limit
+from .providers import (
+    PROVIDER_NAMES,
+    default_provider_concurrency,
+    default_provider_urls,
+    split_model_id,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +28,7 @@ class AppConfig:
     ocr_mode: str = "balanced"  # fast | balanced | high
     undated_folder_name: str = "undated"
     providers: dict[str, str] = None  # type: ignore[assignment]
+    provider_concurrency: dict[str, int] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         # Ensure taxonomies is always a dict
@@ -33,6 +40,12 @@ class AppConfig:
                 if name in merged and isinstance(url, str):
                     merged[name] = url.strip()
         object.__setattr__(self, "providers", merged)
+        limits = default_provider_concurrency()
+        if self.provider_concurrency:
+            for name, value in self.provider_concurrency.items():
+                if name in limits:
+                    limits[name] = clamp_limit(value, default=limits[name])
+        object.__setattr__(self, "provider_concurrency", limits)
 
 
 def migrate_model_id(value: str) -> str:
@@ -148,6 +161,14 @@ def load_config() -> AppConfig:
         if isinstance(legacy_ds4, str) and legacy_ds4.strip():
             providers["ds4"] = legacy_ds4.strip()
     kwargs["providers"] = providers
+    # Absent in configs written before 0.13.0, which simply get the defaults.
+    concurrency = default_provider_concurrency()
+    concurrency_raw = data.get("provider_concurrency")
+    if isinstance(concurrency_raw, dict):
+        for name, value in concurrency_raw.items():
+            if name in PROVIDER_NAMES:
+                concurrency[name] = clamp_limit(value, default=concurrency[name])
+    kwargs["provider_concurrency"] = concurrency
     return AppConfig(**kwargs)  # type: ignore[arg-type]
 
 
