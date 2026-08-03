@@ -326,6 +326,7 @@ class ArchiverApp(App):
                 undated_folder_name=self.settings.undated_folder_name,
                 archive_root=self.settings.archive_root,
                 providers=self.settings.providers,
+                provider_concurrency=self.settings.provider_concurrency,
                 available_models=available_models,
                 provider_info=provider_info,
             ),
@@ -362,6 +363,7 @@ class ArchiverApp(App):
             ocr_mode=result.ocr_mode,
             undated_folder_name=result.undated_folder_name,
             providers=result.providers,
+            provider_concurrency=result.provider_concurrency,
         )
         self.query_one("#arc", Static).update(f"Archive: {self.settings.archive_root}")
         self._save_app_config()
