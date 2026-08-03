@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 **amenity-ai** is a Python TUI (Textual framework) that organizes files using local LLM analysis via Ollama. It follows a 2-phase workflow:
-1. **Scan**: Extract content from files (PDF, images, Office docs, text, CSV, HTML, GPX, YAML) + optional Tesseract OCR, then call LLM to produce structured facts
+1. **Scan**: Extract content from files (PDF, images, Office docs, PowerPoint, email, text, CSV, HTML, GPX, YAML) + optional Tesseract OCR, then call LLM to produce structured facts
 2. **Classify**: Use cached facts + user-defined taxonomy to propose category, reference year, and filename
 
 Files can then be moved to an archive structured as `{category}/{year}` (or `{category}/{undated}`).

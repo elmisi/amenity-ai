@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-08-03
+
+- Two new file types, both surfaced by a real scan that found 6 of one and 11
+  of the other with no extractor:
+  - `.pptx` — slide text plus title, author and creation date from the
+    document properties; that date is exactly the year hint the analyzer
+    feeds on. Standard library only (a pptx is a zip of XML, like kmz).
+    Legacy binary `.ppt` is not covered.
+  - `.eml` — headers, the preferred body part (plain text, or HTML stripped
+    of tags) and attachment names, which often name the actual document
+    better than the email text does. The `Date` header supplies the year.
+- Both are in the default `include_extensions`, so previously skipped files
+  are picked up by `k` + `S` after upgrading.
+
 ## [0.13.2] - 2026-08-03
 
 - csv, html, yaml and gpx files are scanned again. Their extractors have

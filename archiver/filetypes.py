@@ -17,6 +17,9 @@ KIND_BY_EXTENSION: dict[str, str] = {
     "odt": "odt",
     "xls": "xls",
     "xlsx": "xlsx",
+    "pptx": "pptx",
+    # Email
+    "eml": "eml",
     # Text-ish
     "json": "json",
     "md": "md",

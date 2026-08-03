@@ -16,7 +16,7 @@ ExtractMeta = Union[PdfExtractMeta, OfficeExtractMeta, TextExtractMeta]
 # while their extractors sat here unused.
 OFFICE_KINDS: frozenset[str] = frozenset({"doc", "docx", "odt", "xls", "xlsx"})
 TEXTISH_KINDS: frozenset[str] = frozenset(
-    {"json", "md", "txt", "rtf", "svg", "kmz", "gpx", "html", "csv", "yaml"}
+    {"json", "md", "txt", "rtf", "svg", "kmz", "gpx", "html", "csv", "yaml", "pptx", "eml"}
 )
 EXTRACTABLE_TEXT_KINDS: frozenset[str] = frozenset({"pdf"}) | OFFICE_KINDS | TEXTISH_KINDS
 

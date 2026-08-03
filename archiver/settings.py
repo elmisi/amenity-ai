@@ -23,6 +23,8 @@ class Settings:
         "odt",
         "xls",
         "xlsx",
+        "pptx",
+        "eml",
         "json",
         "md",
         "txt",
