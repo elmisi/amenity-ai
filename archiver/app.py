@@ -45,7 +45,13 @@ from .task_state import TaskState
 from .help_screen import HelpScreen
 from .doctor_screen import DoctorScreen
 from .ui_runtime import banner_for_state, count_statuses, derive_task_state, runtime_problem
-from .item_mutations import mark_item_classifying, mark_item_scanning, reset_item_to_pending, unclassify_item
+from .item_mutations import (
+    can_requeue,
+    mark_item_classifying,
+    mark_item_scanning,
+    reset_item_to_pending,
+    unclassify_item,
+)
 from .open_file import open_with_default_app
 from .ui_files_table import build_file_table_rows
 from .cache_overlay import overlay_scan_items_with_cache
@@ -292,14 +298,16 @@ class ArchiverApp(App):
         The alternative today is `r` once per row or `R`, which throws away
         every good result along with the bad ones. Skips are often systematic —
         a file type the analyzer could not reach, a provider that was down — so
-        after the cause is fixed they are re-run as a group with `S`.
+        after the cause is fixed they are re-run as a group with `S`. Rows the
+        app has no extractor for are left alone: requeuing them cannot change
+        their outcome.
         """
         if self._analysis_task.running or self._scan_task.running or self._archive_task.running:
             return
         files = self.query_one("#files", DataTable)
         any_changed = False
         for idx, it in enumerate(list(self._scan_items)):
-            if it.status not in {"skipped", "error"}:
+            if not can_requeue(it):
                 continue
             any_changed = True
             updated = reset_item_to_pending(it)

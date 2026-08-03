@@ -16,7 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `k` requeues skipped and error rows as pending, touching nothing else.
   Skips are often systematic — a file type the analyzer could not reach, a
   provider that was down — and the only remedies were `r` once per row or
-  `R`, which throws away every good result along with the bad ones.
+  `R`, which throws away every good result along with the bad ones. Only
+  rows an extractor can actually handle are requeued: the zips and webp the
+  scanner lists as unsupported stay where they are, since another pass
+  cannot change their outcome.
 
 ## [0.13.1] - 2026-08-03
 
