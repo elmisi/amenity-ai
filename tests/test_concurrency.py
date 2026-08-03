@@ -18,8 +18,9 @@ def test_clamp_rejects_nonsense_and_keeps_the_default():
 
 
 def test_clamp_pins_the_range():
-    assert clamp_limit(0, default=4) == 1
-    assert clamp_limit(-7, default=4) == 1
+    # 0 is legal since 0.16.0: it disables the provider.
+    assert clamp_limit(0, default=4) == 0
+    assert clamp_limit(-7, default=4) == 0
     assert clamp_limit(999, default=4) == MAX_SLOTS
     assert clamp_limit("6", default=4) == 6
 

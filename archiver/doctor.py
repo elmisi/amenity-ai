@@ -62,7 +62,10 @@ class DoctorReport:
 def _provider_check(status) -> Check:
     label = f"{status.name} {status.url}".strip()
     if not status.configured:
-        return Check(f"provider.{status.name}", label, STATUS_SKIP, "not configured")
+        # A provider can be unconfigured (no URL) or switched off with
+        # parallel: 0 — the status says which, and the check passes it on.
+        return Check(f"provider.{status.name}", label, STATUS_SKIP,
+                     status.detail or "not configured")
     if not status.available:
         return Check(f"provider.{status.name}", label, STATUS_FAIL, status.detail)
     if not status.models:

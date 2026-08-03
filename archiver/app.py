@@ -408,7 +408,11 @@ class ArchiverApp(App):
         self.push_screen(HelpScreen(), wait_for_dismiss=False)
 
     def _on_settings_done(self, result: SettingsResult) -> None:
-        endpoints_changed = result.providers != self.settings.providers
+        endpoints_changed = (
+            result.providers != self.settings.providers
+            # 0 <-> n changes which providers exist at all, so re-discover.
+            or result.provider_concurrency != self.settings.provider_concurrency
+        )
         self.settings = replace(
             self.settings,
             output_language=result.output_language,
@@ -450,7 +454,9 @@ class ArchiverApp(App):
 
         def do_discover() -> DiscoveryResult:
             return discover_providers(
-                self.settings.providers, probe_cache=load_probe_cache()
+                self.settings.providers,
+                probe_cache=load_probe_cache(),
+                disabled=self.settings.disabled_providers(),
             )
 
         worker = self.run_worker(do_discover, thread=True)
@@ -632,7 +638,7 @@ class ArchiverApp(App):
                 )
 
             executor = ThreadPoolExecutor(
-                max_workers=pool_size_for(self.settings.providers, limiter),
+                max_workers=pool_size_for(self.settings.enabled_provider_urls(), limiter),
                 thread_name_prefix="facts",
             )
             stopped = False
@@ -718,7 +724,7 @@ class ArchiverApp(App):
                 res = normalize_items_with_fallback(
                     items=targets,
                     models=text_models,
-                    provider_urls=self.settings.providers,
+                    provider_urls=self.settings.enabled_provider_urls(),
                     taxonomy=taxonomy,
                     output_language=self.settings.output_language,
                     filename_separator=self.settings.filename_separator,
@@ -1055,7 +1061,7 @@ class ArchiverApp(App):
             res = normalize_items_with_fallback(
                 items=[it],
                 models=text_models,
-                provider_urls=self.settings.providers,
+                provider_urls=self.settings.enabled_provider_urls(),
                 taxonomy=taxonomy,
                 output_language=self.settings.output_language,
                 filename_separator=self.settings.filename_separator,

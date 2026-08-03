@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-08-03
+
+- `parallel: 0` disables a provider while keeping its URL. Blanking the URL
+  was the only off switch, and it forgets the endpoint. Zero slots means
+  "never call it": discovery skips the server, none of its models enter the
+  ranking, analysis and classification never route to it, and the doctor
+  reports `disabled (parallel 0)` instead of a failure — so a deliberately
+  stopped server no longer costs a red banner or a non-zero doctor exit code.
+  Changing the value re-runs discovery, so flipping 0 back to a number brings
+  the provider straight back.
+
 ## [0.15.1] - 2026-08-03
 
 - The settings screen stops wasting the taxonomy's space. The provider

@@ -155,6 +155,11 @@ throughput stops improving past four concurrent requests and per-file latency ke
 growing. ds4 stays at 1 because it answers one caller at a time. Ollama stays at 1 because
 `OLLAMA_NUM_PARALLEL` is not visible to us — raise it if your server allows more.
 
+**Parallel 0 disables the provider without forgetting it**: the URL stays in the
+configuration, but discovery skips the server, no model of its is ranked, and the doctor
+reports it as `disabled (parallel 0)` instead of failing. Handy when a server is switched
+off for a while and you do not want to retype its endpoint later.
+
 Models carry their provider as a prefix — `ollama:qwen3:8b`, `vllm:…`, `ds4:…` — so you can
 always tell where one comes from. With models set to `auto`, candidates are ordered by
 provider priority (`vllm` first, since it serves concurrent requests, then `ollama`, then

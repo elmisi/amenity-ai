@@ -35,6 +35,6 @@ def build_analysis_config(
         vision_models=vision_models,
         filename_separator=settings.filename_separator,
         ocr_mode=settings.ocr_mode,
-        provider_urls=dict(settings.providers),
+        provider_urls=settings.enabled_provider_urls(),
         limiter=limiter,
     )
