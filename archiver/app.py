@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from dataclasses import replace
 
 from rich.text import Text
@@ -14,7 +15,8 @@ from textual.widgets import DataTable, Footer, Header, Static
 from textual.worker import get_current_worker
 
 from .analyzer import extract_facts_item
-from .cache import CacheStore
+from .cache import CacheStore, SaveThrottle
+from .concurrency import ConcurrencyLimiter, pool_size_for
 from .config import AppConfig, save_config
 from .confirm_screen import ConfirmResult, ConfirmScreen
 from .discovery import DiscoveryResult, discover_providers
@@ -26,7 +28,15 @@ from .settings_screen import SettingsResult, SettingsScreen
 from .setup_screen import SetupResult, SetupScreen
 from .setup_logic import app_config_from_settings, settings_from_setup
 from .taxonomy import parse_taxonomy_lines
-from .ui_status import app_title, notes_line, provider_summary, status_cell
+from .ui_status import (
+    RunProgress,
+    app_title,
+    compute_rate,
+    notes_line,
+    progress_line,
+    provider_summary,
+    status_cell,
+)
 from .model_selection import ROLE_CLASSIFY, rank_models
 from .probe_cache import load_probe_cache
 from .task_builders import build_analysis_config, _with_pin
@@ -90,6 +100,16 @@ class ArchiverApp(App):
         self._scan_task = TaskState()
         self._archive_task = TaskState()
         self._provider_line: str = ""
+        # Progress of the run in flight, not of the table: the table can hold
+        # files finished in an earlier session.
+        self._run_total = 0
+        self._run_completed = 0
+        self._run_in_flight = 0
+        self._run_skipped = 0
+        self._run_error = 0
+        self._run_completions: list[float] = []
+        self._run_started_at = 0.0
+        self._cache_throttle = SaveThrottle()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -450,6 +470,17 @@ class ArchiverApp(App):
 
         files = self.query_one("#files", DataTable)
 
+        def begin_run(total: int) -> None:
+            self._run_total = total
+            self._run_completed = 0
+            self._run_in_flight = 0
+            self._run_skipped = 0
+            self._run_error = 0
+            self._run_completions.clear()
+            self._run_started_at = time.monotonic()
+            self._cache_throttle = SaveThrottle()
+            self._render_notes()
+
         def mark_scanning(path_str: str) -> None:
             idx = self._scan_index_by_path.get(path_str)
             if idx is None:
@@ -458,6 +489,7 @@ class ArchiverApp(App):
             if it.status != "pending":
                 return
             self._scan_items[idx] = mark_item_scanning(it)
+            self._run_in_flight += 1
             files.update_cell(path_str, "status", status_cell("scanning"))
             self._render_notes()
             if files.cursor_row == idx:
@@ -468,6 +500,13 @@ class ArchiverApp(App):
             if idx is None:
                 return
             self._scan_items[idx] = new_item
+            self._run_in_flight = max(0, self._run_in_flight - 1)
+            self._run_completed += 1
+            if new_item.status == "skipped":
+                self._run_skipped += 1
+            elif new_item.status == "error":
+                self._run_error += 1
+            self._run_completions.append(time.monotonic())
             files.update_cell(path_str, "status", status_cell(new_item.status))
             files.update_cell(path_str, "category", new_item.category or "")
             files.update_cell(path_str, "year", new_item.reference_year or "")
@@ -476,7 +515,10 @@ class ArchiverApp(App):
                 self._update_details(idx)
             if self._cache:
                 self._cache.upsert(new_item)
-                self._cache.save()
+                # A write re-serialises the whole cache; with several files in
+                # flight, doing it per file would stall the event loop.
+                if self._cache_throttle.record():
+                    self._cache.save()
 
         def finish(cancelled: bool) -> None:
             if cancelled:
@@ -487,24 +529,43 @@ class ArchiverApp(App):
                     self._scan_items[idx] = updated
                     key = str(updated.path)
                     files.update_cell(key, "status", status_cell("pending"))
+            if self._cache and self._cache_throttle.flush():
+                self._cache.save()
+            self._run_in_flight = 0
             self._analysis_task.running = False
             self._render_notes()
 
         def do_extract_background() -> None:
-            taxonomy, _ = parse_taxonomy_lines(self.settings.get_taxonomy_lines())
-            cfg = build_analysis_config(settings=self.settings, discovery=self._discovery, taxonomy=taxonomy)
             worker = get_current_worker()
-            for it in list(self._scan_items):
+            taxonomy, _ = parse_taxonomy_lines(self.settings.get_taxonomy_lines())
+            limiter = ConcurrencyLimiter.from_limits(self.settings.provider_concurrency)
+            cfg = build_analysis_config(
+                settings=self.settings, discovery=self._discovery,
+                taxonomy=taxonomy, limiter=limiter,
+            )
+            targets = [it for it in self._scan_items if it.status == "pending"]
+            self.call_from_thread(begin_run, len(targets))
+
+            def run_one(it: ScanItem):
+                # Checked here as well as in the loop below: a thread that has
+                # just finished an item would otherwise pick up the next one
+                # before the executor is told to stop.
                 if worker.is_cancelled:
-                    break
-                if it.status != "pending":
-                    continue
+                    return None
                 path_str = str(it.path)
                 self.call_from_thread(mark_scanning, path_str)
                 t0 = time.perf_counter()
-                res = extract_facts_item(it, config=cfg)
+                try:
+                    res = extract_facts_item(it, config=cfg)
+                except Exception as exc:  # noqa: BLE001
+                    # One bad file must not take the run down with it: an
+                    # exception escaping here would leave finish() uncalled and
+                    # the UI stuck on "running" forever.
+                    return path_str, replace(
+                        it, status="error", reason=f"Scan crashed: {type(exc).__name__}"
+                    )
                 elapsed = time.perf_counter() - t0
-                updated = replace(
+                return path_str, replace(
                     it,
                     status=res.status,
                     reason=res.reason,
@@ -527,7 +588,32 @@ class ArchiverApp(App):
                     proposed_name=None,
                     summary=None,
                 )
-                self.call_from_thread(apply_result, path_str, updated)
+
+            executor = ThreadPoolExecutor(
+                max_workers=pool_size_for(self.settings.providers, limiter),
+                thread_name_prefix="facts",
+            )
+            stopped = False
+            try:
+                futures = [executor.submit(run_one, it) for it in targets]
+                for future in as_completed(futures):
+                    if worker.is_cancelled and not stopped:
+                        stopped = True
+                        # Drop what is queued; what is already running finishes
+                        # and is still applied, so no completed work is wasted.
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    try:
+                        outcome = future.result()
+                    except CancelledError:
+                        continue
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if outcome is None:
+                        continue
+                    path_str, updated = outcome
+                    self.call_from_thread(apply_result, path_str, updated)
+            finally:
+                executor.shutdown(wait=True)
             self.call_from_thread(finish, worker.is_cancelled)
 
         worker = self.run_worker(do_extract_background, thread=True, exclusive=True)
@@ -821,7 +907,14 @@ class ArchiverApp(App):
                 self._render_notes()
 
             taxonomy, _ = parse_taxonomy_lines(self.settings.get_taxonomy_lines())
-            cfg = build_analysis_config(settings=self.settings, discovery=self._discovery, taxonomy=taxonomy)
+            # One file on its own still respects a provider that wants a single
+            # caller — nothing else is in flight here, but ds4 does not know that.
+            cfg = build_analysis_config(
+                settings=self.settings,
+                discovery=self._discovery,
+                taxonomy=taxonomy,
+                limiter=ConcurrencyLimiter.from_limits(self.settings.provider_concurrency),
+            )
             t0 = time.perf_counter()
             if worker.is_cancelled:
                 stopped = replace(reset, status="pending", reason="Scan stopped")
@@ -1001,8 +1094,24 @@ class ArchiverApp(App):
             problem=problem,
             severity=severity,
         )
-        self.query_one("#notes", Static).update(
-            notes_line(
+        if self._analysis_task.running and self._run_total:
+            text = progress_line(
+                RunProgress(
+                    total=self._run_total,
+                    completed=self._run_completed,
+                    in_flight=self._run_in_flight,
+                    skipped=self._run_skipped,
+                    error=self._run_error,
+                ),
+                rate=compute_rate(
+                    self._run_completions,
+                    now=time.monotonic(),
+                    started_at=self._run_started_at,
+                ),
+                total_files=counts.total,
+            )
+        else:
+            text = notes_line(
                 scan_items_total=counts.total,
                 pending=counts.pending,
                 scanning=counts.scanning,
@@ -1013,5 +1122,5 @@ class ArchiverApp(App):
                 skipped=counts.skipped,
                 error=counts.error,
             )
-        )
+        self.query_one("#notes", Static).update(text)
         self.query_one("#banner", Static).update(Text(banner_text, style=banner_style))

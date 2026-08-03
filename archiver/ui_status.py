@@ -96,20 +96,30 @@ class RunProgress:
 
 
 def compute_rate(
-    timestamps: Sequence[float], *, now: float, window_s: float = 60.0
+    timestamps: Sequence[float],
+    *,
+    now: float,
+    started_at: float,
+    window_s: float = 60.0,
 ) -> Optional[float]:
     """Completions per second over the trailing window.
 
-    A sliding window rather than the run average, so one slow file shows up
+    Divided by the time the window actually covers, not by the gap between the
+    first and last completion in it. With several files in flight, completions
+    arrive in bursts: measuring the gap between arrivals reads the burst and
+    promises an ETA the run cannot keep.
+
+    A sliding window rather than the whole run, so a slow stretch shows up
     instead of being diluted by everything that came before it.
     """
-    recent = sorted(t for t in timestamps if now - t <= window_s)
-    if len(recent) < 2:
+    window_start = max(started_at, now - window_s)
+    covered = now - window_start
+    if covered <= 0:
         return None
-    span = recent[-1] - recent[0]
-    if span <= 0:
+    recent = [t for t in timestamps if t >= window_start]
+    if not recent:
         return None
-    return (len(recent) - 1) / span
+    return len(recent) / covered
 
 
 def format_eta(seconds: Optional[float]) -> str:

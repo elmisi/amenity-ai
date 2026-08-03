@@ -10,19 +10,34 @@ def test_queued_never_goes_negative():
     assert RunProgress(total=2, completed=2, in_flight=4).queued == 0
 
 
-def test_rate_needs_two_completions():
-    assert compute_rate([], now=100.0) is None
-    assert compute_rate([95.0], now=100.0) is None
+def test_no_completions_means_no_rate():
+    assert compute_rate([], now=100.0, started_at=40.0) is None
 
 
-def test_rate_counts_intervals_not_events():
-    # two completions ten seconds apart is one per ten seconds
-    assert compute_rate([90.0, 100.0], now=100.0) == 0.1
+def test_rate_is_completions_over_the_time_actually_covered():
+    # three files in the sixty seconds since the run started
+    assert compute_rate(
+        [50.0, 70.0, 90.0], now=100.0, started_at=40.0, window_s=60.0
+    ) == 3 / 60
+
+
+def test_a_burst_does_not_inflate_the_rate():
+    """Four files finishing within a second of each other is a wave arriving,
+    not the run suddenly going four times faster."""
+    burst = [98.0, 98.2, 98.4, 98.6]
+    rate = compute_rate(burst, now=99.0, started_at=39.0, window_s=60.0)
+    assert rate == 4 / 60
+
+
+def test_the_window_never_reaches_back_before_the_run_started():
+    # nine seconds in, one file done: one per nine seconds, not one per sixty
+    assert compute_rate([95.0], now=100.0, started_at=91.0, window_s=60.0) == 1 / 9
 
 
 def test_rate_ignores_completions_outside_the_window():
-    # the old one is dropped, leaving a single sample
-    assert compute_rate([0.0, 95.0], now=100.0, window_s=60.0) is None
+    assert compute_rate(
+        [0.0, 95.0], now=100.0, started_at=0.0, window_s=60.0
+    ) == 1 / 60
 
 
 def test_eta_formats_by_magnitude():
